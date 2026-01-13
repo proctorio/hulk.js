@@ -178,6 +178,11 @@ describe("minify__", () =>
 			<p>
 				Nick made a change
 			</p>
+
+			<code>Preserve
+newlines</code>
+			<pre>Preserve
+newlines</pre>
 			
 			</body>
 			</html>
@@ -185,7 +190,7 @@ describe("minify__", () =>
 	
 		const dummyHTMLMinify = minify__(dummyHTML, "html");
 	
-		expect(dummyHTMLMinify).toBe("<!DOCTYPE html><html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"/><title>Spoon-Knife</title><LINK href=styles.css rel=\"stylesheet\" type=\"text/css\"></head><body><img src=forkit.gif id=\"octocat\" alt=\"\" /><p> Fork me? Fork you, @octocat! </p><p> Nick made a change </p></body></html>");
+		expect(dummyHTMLMinify).toBe("<!DOCTYPE html><html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"/><title>Spoon-Knife</title><LINK href=styles.css rel=\"stylesheet\" type=\"text/css\"></head><body><img src=forkit.gif id=\"octocat\" alt=\"\" /><p> Fork me? Fork you, @octocat! </p><p> Nick made a change </p> <code>Preserve\nnewlines</code> <pre>Preserve\nnewlines</pre> </body></html>");
 	});
 	
 	it("minify SVG", () => 
