@@ -5,7 +5,22 @@
  */
 function _minifiHtml__(content)
 {
-	const minified = content
+	const preservedBlocks = [];
+
+	// Extract <pre> and <code> blocks.
+	const placeholderHtml = content.replace(
+		/<(pre|code)(\b[^>]*)>[\s\S]*?<\/\1>/giu,
+		match => 
+		{
+			const key = `__PRESERVE_BLOCK_${preservedBlocks.length}__`;
+			preservedBlocks.push(match);
+			
+			return key;
+		}
+	);
+
+	// Minify remaining HTML.
+	let minified = placeholderHtml
 		.replace(/\r\n|\n|\t/giu, " ")
 		.replace(/(href|src)=('|")(\S+)('|")/giu, "$1=$3")
 		.replace(/>\s+</giu, "><").trim()
@@ -15,7 +30,14 @@ function _minifiHtml__(content)
 		.replace(/\s+>/gu, ">")
 		.replace(/<script\s+type=(["'])text\/javascript\1/giu, "<script")
 		.replace(/<style\s+type=(["'])text\/css\1/giu, "<style")
-		.replace(/\s+(checked|disabled|selected|readonly|required|autofocus|autoplay|controls|loop|muted)=(["'])\1\2/giu, " $1");
+		.replace(/\s+(checked|disabled|selected|readonly|required|autofocus|autoplay|controls|loop|muted)=(["'])\1\2/giu, " $1")
+		.trim();
+
+	// Restore preserved blocks.
+	preservedBlocks.forEach((block, i) => 
+	{
+		minified = minified.replace(`__PRESERVE_BLOCK_${i}__`, block);
+	});
 
 	return minified;
 }
