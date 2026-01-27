@@ -45,8 +45,7 @@
   "homepage": "https://github.com/proctorio/hulk.js#readme",
   "scripts": {
     "build": "node -e \"require('fs').cpSync('src', 'lib', {recursive: true})\"",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "lint": "eslint --fix --ext .js src/ test/",
     "lint:check": "eslint --ext .js src/ test/",
     "prepublishOnly": "npm run build && npm test"
