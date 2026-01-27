@@ -31,7 +31,6 @@
     }
   },
   "files": [
-    "src",
     "lib",
     "LICENSE",
     "README.md"

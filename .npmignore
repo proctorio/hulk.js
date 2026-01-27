@@ -12,8 +12,10 @@ test/
 .eslintrc*
 .gitignore
 .gitattributes
+.npmrc
 jest.config.js
 pr.yml
+sync.yml
 
 # CI/CD
 .travis.yml
