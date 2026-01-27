@@ -1,5 +1,6 @@
 /lib
 /.vs
+/.test_output
 /node_modules
 package-lock.json
 .DS_Store

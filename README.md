@@ -189,9 +189,6 @@ npm run build
 # Run tests
 npm test
 
-# Run tests in watch mode
-npm run test:watch
-
 # Run tests with coverage
 npm run coverage
 
@@ -207,7 +204,14 @@ npm run prepublishOnly
 
 ### Testing
 
-The project uses Jest with 100% code coverage requirement. All 41 tests cover:
+The project uses Jest with 100% code coverage requirement. Test results and coverage reports are generated in standardized formats:
+
+- **Test Results**: `npm test` generates `test-results.xml` in JUnit format (`.test_output/test-results.xml`)
+- **Coverage Reports**: `npm run coverage` generates:
+  - Cobertura XML format (`cobertura-coverage.xml`)
+  - LCOV format (`lcov.info` and HTML report in `lcov-report/`)
+
+All 41 tests cover:
 - ✅ All minification functions (HTML, CSS, SVG, JS, JSON)
 - ✅ Advanced CSS optimizations (zero units, hex colors, leading zeros)
 - ✅ HTML attribute optimizations (boolean attributes, default types)
