@@ -4,6 +4,7 @@
 .vs/
 coverage/
 test/
+/.test_output
 *.test.js
 *.Test.js
 

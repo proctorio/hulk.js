@@ -31,6 +31,7 @@
     }
   },
   "files": [
+    "src",
     "lib",
     "LICENSE",
     "README.md"
@@ -43,14 +44,9 @@
     "url": "https://github.com/proctorio/hulk.js/issues"
   },
   "homepage": "https://github.com/proctorio/hulk.js#readme",
-  "publishConfig": {
-    "access": "public",
-    "registry": "https://registry.npmjs.org/"
-  },
   "scripts": {
     "build": "node -e \"require('fs').cpSync('src', 'lib', {recursive: true})\"",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
     "coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage",
     "lint": "eslint --fix --ext .js src/ test/",
     "lint:check": "eslint --ext .js src/ test/",
@@ -68,6 +64,7 @@
   "devDependencies": {
     "@proctorio/eslint-config": "2.5.12",
     "eslint": "8.52.0",
-    "jest": "29.7.0"
+    "jest": "29.7.0",
+    "jest-junit": "16.0.0"
   }
 }
