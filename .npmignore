@@ -10,10 +10,13 @@ test/
 
 # Configuration files
 .eslintrc*
+eslint.config.js
 .gitignore
 .gitattributes
-jest.config.js
+.npmrc
+vitest.config.js
 pr.yml
+sync.yml
 
 # CI/CD
 .travis.yml
