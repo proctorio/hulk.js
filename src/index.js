@@ -8,7 +8,7 @@ function _minifiHtml__(content)
 	const preservedBlocks = [];
 
 	// Extract <pre> and <code> blocks.
-	const placeholderHtml = content.replace(
+	const placeholderHtml = content.replaceAll(
 		/<(pre|code)(\b[^>]*)>[\s\S]*?<\/\1>/giu,
 		match => 
 		{
@@ -21,16 +21,16 @@ function _minifiHtml__(content)
 
 	// Minify remaining HTML.
 	let minified = placeholderHtml
-		.replace(/\r\n|\n|\t/giu, " ")
-		.replace(/(href|src)=('|")(\S+)('|")/giu, "$1=$3")
-		.replace(/>\s+</giu, "><").trim()
-		.replace(/\s{2,}/giu, " ")
-		.replace(/<!--[\D\d]*?-->/giu, "")
-		.replace(/\s*=\s*/gu, "=")
-		.replace(/\s+>/gu, ">")
-		.replace(/<script\s+type=(["'])text\/javascript\1/giu, "<script")
-		.replace(/<style\s+type=(["'])text\/css\1/giu, "<style")
-		.replace(/\s+(checked|disabled|selected|readonly|required|autofocus|autoplay|controls|loop|muted)=(["'])\1\2/giu, " $1")
+		.replaceAll(/\r\n|\n|\t/giu, " ")
+		.replaceAll(/(href|src)=('|")(\S+)('|")/giu, "$1=$3")
+		.replaceAll(/>\s+</giu, "><").trim()
+		.replaceAll(/\s{2,}/giu, " ")
+		.replaceAll(/<!--[\D\d]*?-->/giu, "")
+		.replaceAll(/\s*=\s*/gu, "=")
+		.replaceAll(/\s+>/gu, ">")
+		.replaceAll(/<script\s+type=(["'])text\/javascript\1/giu, "<script")
+		.replaceAll(/<style\s+type=(["'])text\/css\1/giu, "<style")
+		.replaceAll(/\s+(checked|disabled|selected|readonly|required|autofocus|autoplay|controls|loop|muted)=(["'])\1\2/giu, " $1")
 		.trim();
 
 	// Restore preserved blocks.
@@ -50,19 +50,19 @@ function _minifiHtml__(content)
 function _minifiCss__(content)
 {
 	const minified = content
-		.replace(/\/\*(?:(?!\*\/)[\s\S])*\*\/|[\r\n\t]+/gu, "")
-		.replace(/ {2,}/gu, " ")
-		.replace(/ ([{:}]) /gu, "$1")
-		.replace(/([;,]) /gu, "$1")
-		.replace(/ !/gu, "!")
-		.replace(/(\s|:)0(?:px|em|rem|vh|vw|vmin|vmax|cm|mm|in|pt|pc|ex|ch)/giu, "$10")
-		.replace(/(\D)0\.(\d+)/gu, "$1.$2")
-		.replace(/;\}/gu, "}")
-		.replace(/#([0-9a-fA-F])\1([0-9a-fA-F])\2([0-9a-fA-F])\3/gu, "#$1$2$3")
-		.replace(/: /gu, ":")
-		.replace(/ \{/gu, "{")
-		.replace(/\{\s+/gu, "{")
-		.replace(/\s+\}/gu, "}");
+		.replaceAll(/\/\*(?:(?!\*\/)[\s\S])*\*\/|[\r\n\t]+/gu, "")
+		.replaceAll(/ {2,}/gu, " ")
+		.replaceAll(/ ([{:}]) /gu, "$1")
+		.replaceAll(/([;,]) /gu, "$1")
+		.replaceAll(" !", "!")
+		.replaceAll(/(\s|:)0(?:px|em|rem|vh|vw|vmin|vmax|cm|mm|in|pt|pc|ex|ch)/giu, "$10")
+		.replaceAll(/(\D)0\.(\d+)/gu, "$1.$2")
+		.replaceAll(";}", "}")
+		.replaceAll(/#([0-9a-fA-F])\1([0-9a-fA-F])\2([0-9a-fA-F])\3/gu, "#$1$2$3")
+		.replaceAll(": ", ":")
+		.replaceAll(" {", "{")
+		.replaceAll(/\{\s+/gu, "{")
+		.replaceAll(/\s+\}/gu, "}");
 
 	return minified;
 }
@@ -74,14 +74,14 @@ function _minifiCss__(content)
  */
 function _minifiSvg__(content)
 {
-	const minified = content.replace(/>\s+</gu, "><")
+	const minified = content.replaceAll(/>\s+</gu, "><")
 		.replaceAll(/\s\s+/gu, " ")
-		.replace(/<![\t\n\r ]*(--([^-]|[\n\r]|-[^-])*--[\t\n\r ]*)>/gu, "")
-		.replace(/(\r\n|\n|\r)/gum, "")
-		.replace(/\s*=\s*/gu, "=")
-		.replace(/(\d)\.0+(\D)/gu, "$1$2")
-		.replace(/(\d)\.(\d*?)0+(\D)/gu, "$1.$2$3")
-		.replace(/(\D)0\.(\d+)/gu, "$1.$2");
+		.replaceAll(/<![\t\n\r ]*(--([^-]|[\n\r]|-[^-])*--[\t\n\r ]*)>/gu, "")
+		.replaceAll(/(\r\n|\n|\r)/gum, "")
+		.replaceAll(/\s*=\s*/gu, "=")
+		.replaceAll(/(\d)\.0+(\D)/gu, "$1$2")
+		.replaceAll(/(\d)\.(\d*?)0+(\D)/gu, "$1.$2$3")
+		.replaceAll(/(\D)0\.(\d+)/gu, "$1.$2");
 
 	return minified;
 }
@@ -93,8 +93,8 @@ function _minifiSvg__(content)
  */
 function _minifiJs__(content)
 {
-	const minified = content.replace(/(^\s*|^)\/\*[\S\s]*?\*\/|(^\s*|^)\/\/.*$/gum, "$1")
-		.replace(/\s+$/gum, "")
+	const minified = content.replaceAll(/(^\s*|^)\/\*[\S\s]*?\*\/|(^\s*|^)\/\/.*$/gum, "$1")
+		.replaceAll(/\s+$/gum, "")
 		.trim();
 
 	return minified;
@@ -111,7 +111,7 @@ function _minifiJson__(content)
 	{
 		return JSON.stringify(JSON.parse(content));
 	} 
-	catch (error)
+	catch
 	{
 		return content;
 	}
