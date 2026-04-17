@@ -26,9 +26,13 @@ function _minifiHtml__(content)
 		.replaceAll(/>\s+</giu, "><").trim()
 		.replaceAll(/\s{2,}/giu, " ");
 
-	// Remove HTML comments in a loop to handle fragments that reassemble after removal.
-	let prev;
-	do { prev = minified; minified = minified.replaceAll(/<!--[\s\S]*?-->/giu, ""); } while (minified !== prev);
+	// Remove HTML comments using indexOf to avoid ReDoS and incomplete sanitization.
+	let start;
+	while ((start = minified.indexOf("<!--")) !== -1) {
+		const end = minified.indexOf("-->", start + 4);
+		if (end === -1) { minified = minified.substring(0, start); break; }
+		minified = minified.substring(0, start) + minified.substring(end + 3);
+	}
 
 	minified = minified
 		.replaceAll(/\s*=\s*/gu, "=")
@@ -79,9 +83,18 @@ function _minifiCss__(content)
  */
 function _minifiSvg__(content)
 {
-	const minified = content.replaceAll(/>\s+</gu, "><")
-		.replaceAll(/\s\s+/gu, " ")
-		.replaceAll(/<!--[\s\S]*?-->/gu, "")
+	let minified = content.replaceAll(/>\s+</gu, "><")
+		.replaceAll(/\s\s+/gu, " ");
+
+	// Remove SVG comments using indexOf to avoid ReDoS.
+	let svgStart;
+	while ((svgStart = minified.indexOf("<!--")) !== -1) {
+		const svgEnd = minified.indexOf("-->", svgStart + 4);
+		if (svgEnd === -1) { minified = minified.substring(0, svgStart); break; }
+		minified = minified.substring(0, svgStart) + minified.substring(svgEnd + 3);
+	}
+
+	minified = minified
 		.replaceAll(/(\r\n|\n|\r)/gum, "")
 		.replaceAll(/\s*=\s*/gu, "=")
 		.replaceAll(/(\d)\.0+(\D)/gu, "$1$2")
