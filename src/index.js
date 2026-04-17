@@ -24,8 +24,13 @@ function _minifiHtml__(content)
 		.replaceAll(/\r\n|\n|\t/giu, " ")
 		.replaceAll(/(href|src)=('|")(\S+)('|")/giu, "$1=$3")
 		.replaceAll(/>\s+</giu, "><").trim()
-		.replaceAll(/\s{2,}/giu, " ")
-		.replaceAll(/<!--[\D\d]*?-->/giu, "")
+		.replaceAll(/\s{2,}/giu, " ");
+
+	// Remove HTML comments in a loop to handle fragments that reassemble after removal.
+	let prev;
+	do { prev = minified; minified = minified.replaceAll(/<!--[\s\S]*?-->/giu, ""); } while (minified !== prev);
+
+	minified = minified
 		.replaceAll(/\s*=\s*/gu, "=")
 		.replaceAll(/\s+>/gu, ">")
 		.replaceAll(/<script\s+type=(["'])text\/javascript\1/giu, "<script")
@@ -76,7 +81,7 @@ function _minifiSvg__(content)
 {
 	const minified = content.replaceAll(/>\s+</gu, "><")
 		.replaceAll(/\s\s+/gu, " ")
-		.replaceAll(/<![\t\n\r ]*(--([^-]|[\n\r]|-[^-])*--[\t\n\r ]*)>/gu, "")
+		.replaceAll(/<!--[\s\S]*?-->/gu, "")
 		.replaceAll(/(\r\n|\n|\r)/gum, "")
 		.replaceAll(/\s*=\s*/gu, "=")
 		.replaceAll(/(\d)\.0+(\D)/gu, "$1$2")
