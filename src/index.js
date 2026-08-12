@@ -118,7 +118,8 @@ function _minifiJson__(content)
 }
 
 /**
- * @description Function that minifies content of HTML, CSS, SVG, JS, and JSON files.
+ * @description Function that minifies content of HTML, CSS, SVG, JS, and JSON files. A
+ * leading UTF-8 BOM (U+FEFF) is always stripped before minification.
  * @param {string} content - Content to minify.
  * @param {string} extension - Type of file (html, css, svg, js, json).
  * @return {string} Return minified content.
@@ -126,25 +127,30 @@ function _minifiJson__(content)
 const minify__ = (content, extension) =>
 {
 	if (typeof content !== "string") return "";
+
+	// A leading U+FEFF is an encoding artifact (byte order mark), not content: strip it so
+	// callers that prepend banners cannot push it mid-file (where it invalidates the first
+	// css rule or html tag) and so JSON.parse does not reject the input.
+	const cleanContent = content.charCodeAt(0) === 0xFEFF ? content.slice(1) : content;
 	
-	let minifiedContent = content;
+	let minifiedContent = cleanContent;
 
 	switch (extension)
 	{
 		case "html":
-			minifiedContent = _minifiHtml__(content);
+			minifiedContent = _minifiHtml__(cleanContent);
 			break;
 		case "css":
-			minifiedContent = _minifiCss__(content);
+			minifiedContent = _minifiCss__(cleanContent);
 			break;
 		case "svg":
-			minifiedContent = _minifiSvg__(content);
+			minifiedContent = _minifiSvg__(cleanContent);
 			break;
 		case "js":
-			minifiedContent = _minifiJs__(content);
+			minifiedContent = _minifiJs__(cleanContent);
 			break;
 		case "json":
-			minifiedContent = _minifiJson__(content);
+			minifiedContent = _minifiJson__(cleanContent);
 			break;
 		default:
 			console.warn("Extension provided is not supported. Returning same content.");

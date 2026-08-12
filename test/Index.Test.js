@@ -611,7 +611,7 @@ newlines</pre>
 		expect(minified).toContain('fill-opacity=".75"');
 	});
 
-	it("minify SVG preserves integers", () => 
+	it("minify SVG preserves integers", () =>
 	{
 		const svg = "<svg width=\"100\" height=\"200\"><circle r=\"10\"/></svg>";
 		const minified = minify__(svg, "svg");
@@ -619,5 +619,22 @@ newlines</pre>
 		expect(minified).toContain('width="100"');
 		expect(minified).toContain('height="200"');
 		expect(minified).toContain('r="10"');
+	});
+
+	it("strip leading UTF-8 BOM for every content type", () =>
+	{
+		expect(minify__("\uFEFFa { color: red; }", "css")).toBe("a{color:red}");
+		expect(minify__("\uFEFF<p>proctorio</p>", "html")).toBe("<p>proctorio</p>");
+		expect(minify__("\uFEFF{ \"a\": 1 }", "json")).toBe("{\"a\":1}");
+		expect(minify__("\uFEFF<svg><rect opacity=\"0.5\"/></svg>", "svg")).toBe("<svg><rect opacity=\".5\"/></svg>");
+		expect(minify__("\uFEFFvar bom = 1;", "js")).toBe("var bom = 1;");
+	});
+
+	it("keep BOM-free content byte-identical", () =>
+	{
+		const css = "a { color: red; }";
+
+		expect(minify__(css, "css")).toBe(minify__("\uFEFF" + css, "css"));
+		expect(minify__("", "css")).toBe("");
 	});
 });
