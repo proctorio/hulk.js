@@ -1,3 +1,8 @@
+// HTML void elements: the self-closing "/" before ">" is never meaningful for these (browsers
+// treat "<img ... />" and "<img ...>" identically), unlike svg/mathml foreign content elements
+// (e.g. <path/>, <circle/>), where the "/" is what tells the parser the element has no children.
+const VOID_ELEMENTS__ = "area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr";
+
 /**
  * @description Minifies HTML content.
  * @param {string} content - Original HTML content.
@@ -22,10 +27,26 @@ function _minifiHtml__(content)
 	// Minify remaining HTML.
 	let minified = placeholderHtml
 		.replaceAll(/\r\n|\n|\t/giu, " ")
-		.replaceAll(/(href|src)=('|")(\S+)('|")/giu, "$1=$3")
+
+		// drop the self-closing "/" on void elements: always safe, regardless of attribute order
+		.replaceAll(new RegExp(`(<(?:${VOID_ELEMENTS__})\\b[^>]*?)\\s*/>`, "giu"), "$1>")
+
+		// don't strip quotes right before a "/": would get absorbed into the value otherwise
+		.replaceAll(/(href|src)=('|")(\S+)('|")(?!\s*\/)/giu, "$1=$3")
 		.replaceAll(/>\s+</giu, "><").trim()
-		.replaceAll(/\s{2,}/giu, " ")
-		.replaceAll(/<!--[\D\d]*?-->/giu, "")
+		.replaceAll(/\s{2,}/giu, " ");
+
+	// Repeat until no comments remain: nested/overlapping "<!--"/"-->" can otherwise survive a
+	// single pass by re-forming across a deleted comment's boundary (CodeQL
+	// js/incomplete-multi-character-sanitization, e.g. "<!<!---->-->-->" -> "<!-->-->" -> "").
+	let previousMinified;
+	do
+	{
+		previousMinified = minified;
+		minified = minified.replaceAll(/<!--[\D\d]*?-->/giu, "");
+	} while (minified !== previousMinified);
+
+	minified = minified
 		.replaceAll(/\s*=\s*/gu, "=")
 		.replaceAll(/\s+>/gu, ">")
 		.replaceAll(/<script\s+type=(["'])text\/javascript\1/giu, "<script")

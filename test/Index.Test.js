@@ -190,7 +190,7 @@ newlines</pre>
 	
 		const dummyHTMLMinify = minify__(dummyHTML, "html");
 	
-		expect(dummyHTMLMinify).toBe("<!DOCTYPE html><html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"/><title>Spoon-Knife</title><LINK href=styles.css rel=\"stylesheet\" type=\"text/css\"></head><body><img src=forkit.gif id=\"octocat\" alt=\"\" /><p> Fork me? Fork you, @octocat! </p><p> Nick made a change </p> <code>Preserve\nnewlines</code> <pre>Preserve\nnewlines</pre> </body></html>");
+		expect(dummyHTMLMinify).toBe("<!DOCTYPE html><html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"><title>Spoon-Knife</title><LINK href=styles.css rel=\"stylesheet\" type=\"text/css\"></head><body><img src=forkit.gif id=\"octocat\" alt=\"\"><p> Fork me? Fork you, @octocat! </p><p> Nick made a change </p> <code>Preserve\nnewlines</code> <pre>Preserve\nnewlines</pre> </body></html>");
 	});
 	
 	it("minify SVG", () => 
@@ -636,5 +636,121 @@ newlines</pre>
 
 		expect(minify__(css, "css")).toBe(minify__("\uFEFF" + css, "css"));
 		expect(minify__("", "css")).toBe("");
+	});
+
+	it("minify HTML fully minifies an img's self-closing trailing src", () =>
+	{
+		// img's self-closing "/" is dropped first, so by the time the src quotes are
+		// stripped there's no "/>" left to absorb into the value - full minification, no corruption
+		const html = "<img id=\"player_student\" src=\"data:image/png;base64,AAAA/AAA=\" />";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("<img id=\"player_student\" src=data:image/png;base64,AAAA/AAA=>");
+	});
+
+	it("minify HTML keeps quotes on a non-void self-closing tag's trailing href, space before the slash", () =>
+	{
+		// <use> is svg foreign content, not a void element, so its self-closing "/" is never
+		// dropped - the quote-stripping guard leaves its href alone instead of risking corruption
+		const html = "<svg><use href=\"#icon-name\" /></svg>";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("<svg><use href=\"#icon-name\" /></svg>");
+	});
+
+	it("minify HTML keeps quotes on a non-void self-closing tag's trailing href, no space before the slash", () =>
+	{
+		// this is the case that would actually corrupt if stripped: no space means an unquoted
+		// value has no delimiter before the "/", so it would get absorbed into the value and the
+		// tag would never be recognized as self-closing - the guard protects it the same way
+		const html = "<svg><use href=\"#icon-name\"/></svg>";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("<svg><use href=\"#icon-name\"/></svg>");
+	});
+
+	it("minify HTML still strips quotes from img's src followed by another attribute", () =>
+	{
+		// src is not the last attribute, so the tag's "/" was always safely out of reach here,
+		// but img's "/" is dropped regardless
+		const html = "<img src=\"forkit.gif\" alt=\"\" />";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("<img src=forkit.gif alt=\"\">");
+	});
+
+	it("minify HTML still strips quotes from src on a non-self-closing tag", () =>
+	{
+		const html = "<img src=\"data:image/png;base64,AAAA/AAA=\">";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("<img src=data:image/png;base64,AAAA/AAA=>");
+	});
+
+	it("minify HTML drops the self-closing slash on an img with no attributes", () =>
+	{
+		const html = "<div>before<img/>after</div>";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("<div>before<img>after</div>");
+	});
+
+	it("minify HTML drops the self-closing slash on other void elements too, not just img", () =>
+	{
+		const html = "<div>before<br/>after<hr /></div>";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("<div>before<br>after<hr></div>");
+	});
+
+	it("minify HTML fully removes nested comments that would reform across a single pass", () =>
+	{
+		// a single non-repeated pass would strip "<!<!---->-->-->" down to "<!-->-->", which is
+		// itself still a matchable "<!--...-->" sequence - repeating the pass until nothing
+		// changes removes it completely (CodeQL js/incomplete-multi-character-sanitization)
+		const html = "<!<!---->-->-->";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("");
+	});
+
+	it("minify HTML leaves an unterminated comment untouched", () =>
+	{
+		// no closing "-->" anywhere, so the regex never matches at all - unlike a real
+		// browser (which would treat this as EOF-in-comment and drop the rest of the
+		// document), this is left as-is
+		const html = "before<!--unterminated";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("before<!--unterminated");
+	});
+
+	it("minify HTML removes multiple adjacent separate comments", () =>
+	{
+		// two ordinary, non-nested comments back-to-back - not the adversarial case, just
+		// confirming the loop still behaves correctly for normal multi-comment input
+		const html = "<!--a--><!--b-->";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("");
+	});
+
+	it("minify HTML removes multiple separate comments interspersed with content", () =>
+	{
+		const html = "<p>1</p><!--a--><p>2</p><!--b--><p>3</p>";
+
+		const minified = minify__(html, "html");
+
+		expect(minified).toBe("<p>1</p><p>2</p><p>3</p>");
 	});
 });
