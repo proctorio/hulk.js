@@ -24,7 +24,7 @@ const BLOCK_NAMES__ = new Set(["pre", "code", "listing"]);
 const VAULTED_ELEMENTS__ = new Set(["script", "style", "textarea"]);
 const FOREIGN_ROOTS__ = new Set(["svg", "math"]);
 const INTEGRATION_POINTS__ = new Set(["foreignobject", "desc", "title", "mi", "mo", "mn", "ms", "mtext", "annotation-xml"]);
-const VERBATIM_CONTENT__ = new Set(["script", "style", "text", "tspan", "textpath"]);
+const VERBATIM_CONTENT__ = new Set(["script", "style", "text", "tspan", "textpath", "title", "desc"]);
 const BREAKOUT__ = new Set([
 	"b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em", "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr",
 	"i", "img", "li", "listing", "menu", "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike", "sub", "sup", "table", "tt",
@@ -96,20 +96,7 @@ function flush__(state, end)
 
 	if (state.block !== null || end <= textStart) return;
 
-	state.parts.push(scope__(state) === COLLAPSE__ ? escapeMarks__(state, textStart, end) : vault__(state.spans, text.slice(textStart, end)));
-}
-
-/**
- * @description Returns how the character data of the current foreign element is treated.
- * @param {Object} state - Scanner state.
- * @return {number} COLLAPSE__, PRESERVE__ (an xml:space scope) or VERBATIM__ (inside text, tspan, textPath, script or
- * style); COLLAPSE__ outside foreign content.
- */
-function scope__(state)
-{
-	const { scopes } = state;
-
-	return scopes.length === 0 ? COLLAPSE__ : scopes.at(-1);
+	state.parts.push(state.scope === COLLAPSE__ ? escapeMarks__(state, textStart, end) : vault__(state.spans, text.slice(textStart, end)));
 }
 
 /**
@@ -121,13 +108,14 @@ function scope__(state)
 function push__(state, tag)
 {
 	const { name, space } = tag;
-	let scope = scope__(state);
+	let { scope } = state;
 
 	if (scope === VERBATIM__ || VERBATIM_CONTENT__.has(name)) scope = VERBATIM__;
 	else if (space !== null) scope = attributeValue__(state.text, space) === "default" ? COLLAPSE__ : PRESERVE__;
 
 	state.foreign.push(name);
-	state.scopes.push(scope);
+	state.scopes.push(state.scope);
+	state.scope = scope;
 
 	if (INTEGRATION_POINTS__.has(name)) state.integration++;
 }
@@ -144,7 +132,7 @@ function popTo__(state, depth)
 	{
 		if (INTEGRATION_POINTS__.has(state.foreign.pop())) state.integration--;
 
-		state.scopes.pop();
+		state.scope = state.scopes.pop();
 	}
 }
 
@@ -500,6 +488,7 @@ function scan__(text)
 		parts: [],
 		foreign: [],
 		scopes: [],
+		scope: COLLAPSE__,
 		integration: 0,
 		block: null,
 		done: false,

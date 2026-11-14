@@ -43,7 +43,8 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 //   comments, raw text and values inside do not close them, "</pre >" does (H7), and an unclosed one runs to EOF.
 // - svg and math open foreign content: a stack of open foreign elements, no raw text there. An end tag pops to its
 //   nearest match. A breakout tag (div, p, b, ..., and </p> </br>) leaves foreign content and is read as HTML.
-//   Character data is vaulted, whitespace-only runs included, anywhere inside script, style, text, tspan or textPath,
+//   Character data is vaulted, whitespace-only runs included, anywhere inside script, style, text, tspan, textPath,
+//   title or desc (title and desc as the SVG minifier's S1 keeps them; a tag inside them latches, see below),
 //   and in an xml:space scope: each element on the stack inherits its parent's xml:space, an xml:space attribute (the
 //   first one) sets it, and only exactly "default" resets it (any other value, an entity included, preserves). The
 //   SVG minifier's S1 rule, brought in by diff r2. Whitespace between other foreign elements collapses as before.
@@ -918,8 +919,9 @@ describe("HTML diff review round 2", () =>
 
 	it("main already does this right: without <select>, <frameset> or <col>, foreign content is minified, also when <noscript> gates the payloads", () =>
 	{
-		expect(html("<p>a  b</p><svg><title>t  u</title></svg><p>c  d</p>")).toBe("<p>a b</p><svg><title>t u</title></svg><p>c d</p>");
-		expect(html("<noscript></noscript><p>a  b</p><svg><title>t  u</title></svg><p>c  d</p>")).toBe("<noscript></noscript><p>a b</p><svg><title>t u</title></svg><p>c d</p>");
+		// the <p> after the svg shows the scan did not latch (svg title text itself stays as written since diff r2)
+		expect(html("<p>a  b</p><svg>  <title>t</title>  </svg><p>c  d</p>")).toBe("<p>a b</p><svg><title>t</title></svg><p>c d</p>");
+		expect(html("<noscript></noscript><p>a  b</p><svg>  <title>t</title>  </svg><p>c  d</p>")).toBe("<noscript></noscript><p>a b</p><svg><title>t</title></svg><p>c d</p>");
 		expect(html("<noscript></noscript><svg><![CDATA[x]]><g>  </g>  </svg><p>c  d</p>")).toBe("<noscript></noscript><svg><![CDATA[x]]><g></g></svg><p>c d</p>");
 	});
 
@@ -940,6 +942,14 @@ describe("HTML diff review round 2", () =>
 		// the scope ends with its element, and a breakout leaves it
 		expect(html("<svg>\n  <text>a  b</text>\n  <g>  x  y</g>\n</svg>")).toBe("<svg><text>a  b</text><g> x y</g></svg>");
 		expect(html("<svg xml:space=\"preserve\"><text>a  b</text><p>c  d</p><svg><g>  x  y</g></svg>")).toBe("<svg xml:space=\"preserve\"><text>a  b</text><p>c d</p><svg><g> x y</g></svg>");
+	});
+
+	it("diff r2: svg title and desc text stays as written, as the SVG minifier keeps it (red on main)", () =>
+	{
+		expect(html("<svg><title>A  B</title><desc>C\n  D</desc></svg>")).toBe("<svg><title>A  B</title><desc>C\n  D</desc></svg>");
+
+		// control: whitespace between the other elements still collapses
+		expect(html("<svg>\n  <title>A  B</title>\n  <g>  x  y</g>\n</svg>")).toBe("<svg><title>A  B</title><g> x y</g></svg>");
 	});
 
 	it("diff r2: an xml:space scope keeps character data; it is inherited, and only exactly \"default\" resets it (red on main)", () =>
