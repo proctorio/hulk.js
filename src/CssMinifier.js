@@ -58,6 +58,7 @@ const ZERO_PROPERTIES__ = new Set([
 	"flex-basis"
 ]);
 const ASCII_NAME__ = /^[-A-Za-z]+$/u;
+const CHARSET__ = "@charset \"";
 const UNIT_NAME__ = /^[A-Za-z]{2,4}$/u;
 
 /**
@@ -1165,7 +1166,7 @@ function scanCss__(content, spans)
 }
 
 /**
- * @description Minifies CSS content.
+ * @description Minifies CSS content; one that would start with an @charset declaration only once minified stays as written.
  * @param {string} content - Original CSS content.
  * @return {string} Minified output of the given CSS content.
  */
@@ -1183,7 +1184,9 @@ function minifyCss__(content)
 		.replaceAll(/\{[\t\n\f\r ]+/gu, "{")
 		.replaceAll(/(?<![\t\n\f\r ])[\t\n\f\r ]+\}/gu, "}");
 
-	return restoreVault__(spans, minified);
+	const output = restoreVault__(spans, minified);
+
+	return output.startsWith(CHARSET__) && !content.startsWith(CHARSET__) ? content : output;
 }
 
 export { minifyCss__ };

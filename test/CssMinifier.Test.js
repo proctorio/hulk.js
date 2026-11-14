@@ -286,6 +286,22 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 		]);
 	});
 
+	it("diff r6: a stylesheet that would start with @charset only once minified stays as written (red on main)", () =>
+	{
+		// only the exact bytes '@charset "' at the very start declare the encoding; anywhere else the rule is ignored, so
+		// trimming the whitespace or comment before it would switch how a standalone file is decoded
+		expectCases([
+			["\n@charset \"iso-8859-1\";\na{b:c}", "\n@charset \"iso-8859-1\";\na{b:c}"],
+			["/* x */@charset \"iso-8859-1\";\na { b : c }", "/* x */@charset \"iso-8859-1\";\na { b : c }"],
+
+			// controls: a declaration already at the start, or a rule that is no declaration (any case, single quotes), is
+			// minified as before
+			["@charset \"iso-8859-1\";\na { b : c }", "@charset \"iso-8859-1\";a{b:c}"],
+			["\n@CHARSET \"iso-8859-1\";\na { b : c }", "@CHARSET \"iso-8859-1\";a{b:c}"],
+			["\n@charset 'iso-8859-1';\na { b : c }", "@charset 'iso-8859-1';a{b:c}"]
+		]);
+	});
+
 	it("r3, r15: the leading zero goes only from a whole number token", () =>
 	{
 		// positive control: whole number tokens still lose it
