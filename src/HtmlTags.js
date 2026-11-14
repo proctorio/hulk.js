@@ -147,13 +147,6 @@ function valueEnd__(text, part)
 		return close === -1 ? null : part;
 	}
 
-	if (quote === ">")
-	{
-		part.end = part.value;
-
-		return part;
-	}
-
 	part.end = searchFrom__(UNQUOTED_VALUE_END__, text, part.value);
 
 	return part.end === -1 ? null : part;
