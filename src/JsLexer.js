@@ -64,6 +64,7 @@ const SLASH_AFTER_BRACE__ = new Map([
 	["uncertain", null]
 ]);
 const SPECIFIER_WORDS__ = new Set(["from", "import"]);
+const BINDING_AFTER__ = new Set(["var", "let", ","]);
 const OPERAND_TYPES__ = new Set(["closeBracket", "closeParen", "identifier", "number", "regex", "string", "template"]);
 const START__ = { type: "start" };
 const NO_OPENER__ = { opener: "" };
@@ -401,7 +402,8 @@ function _scanSlash__(state)
 		return true;
 	}
 
-	const regex = _slashStartsRegex__(state.previous);
+	const { previous } = state;
+	const regex = previous.binding && _lineBreakBetween__(state, state.tokenEnd, index) ? null : _slashStartsRegex__(previous);
 
 	if (regex === null) return false;
 	if (regex) return _scanRegex__(state);
@@ -444,12 +446,14 @@ function _scanWord__(state)
 	while (index < content.length && _isIdentifierPart__(content[index]));
 
 	const word = content.slice(start, index);
+	const { previous } = state;
 
 	state.index = index;
 
 	return _emit__(state, {
-		type: _wordType__(word, state.previous, state.previous.type === "statementEnd" && _lineBreakBetween__(state, state.tokenEnd, start)),
-		value: word
+		type: _wordType__(word, previous, previous.type === "statementEnd" && _lineBreakBetween__(state, state.tokenEnd, start)),
+		value: word,
+		binding: BINDING_AFTER__.has(previous.value)
 	});
 }
 

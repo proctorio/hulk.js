@@ -34,7 +34,8 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 // or "?.", where they are property names); after ")" only when its "(" followed if, while, for, with or
 // "for await"; after "}" only when its "{" opened a certain block. After an identifier, number, string,
 // template, regex, "]" or postfix ++/-- it is division, except after a string right after from or import (a
-// module specifier, where ASI may end the declaration): that refuses.
+// module specifier, where ASI may end the declaration), and after a line break that follows a name right after var,
+// let or "," (a binding without initializer, where ASI ends the declaration; const always has one): those refuse.
 //
 // A "{" is a certain block at the start, after ";" "{" "}" "=>", after else try finally do catch, or after
 // the ")" of if for while with catch switch. It is a certain expression after any other punctuator (an
@@ -313,6 +314,15 @@ describe("reviewer probes of rounds 1-5 and 15, and the prototype's cases", () =
 		["diff r6 (control: a string in an expression is still divided)", "x = \"a\"\n/ 2;\n// c\n", "x = \"a\"\n/ 2;"],
 		["diff r6 (control: from as a name is still divided)", "let from = 4;\nfrom / 2;\n// c\n", "let from = 4;\nfrom / 2;"],
 		["diff r6 (control: a module specifier then a semicolon)", "import \"text\";\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\n// drop\n", "import \"text\";\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;"],
+		["diff r7 (refused: a slash on a new line after a binding)", "let x\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "let x\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r7 (refused: a slash on a new line after a binding)", "var x\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "var x\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r7 (refused: a slash on a new line after a binding)", "let x, y\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "let x, y\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r7 (refused: a slash on a new line after a binding)", "export let x\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "export let x\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r7 (refused: a slash on a new line after a binding)", "var a = 1, b\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "var a = 1, b\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r7 (refused: a slash on a new line after a binding)", "let x /* c\n */ /`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "let x /* c\n */ /`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r7 (control: a name after = is an operand, its slash on the next line division)", "const r = width\n  / height;\n// c\n", "const r = width\n  / height;"],
+		["diff r7 (control: a slash on the same line after a name after , is division)", "f(a, b / 2);\n// c\n", "f(a, b / 2);"],
+		["diff r7 (control: an initializer's name is an operand)", "let x = a\n/ 2;\n// c\n", "let x = a\n/ 2;"],
 		["r1-r4 (js-cases)", "var t = `a\n// x\nb`;", "var t = `a\n// x\nb`;"],
 		["r1-r4 (js-cases)", "var s = 'a\\\n// x\nb';", "var s = 'a\\\n// x\nb';"],
 		["r1-r4 (js-cases)", "var a = 1; // trailing\n/* c */\nfoo();", "var a = 1; // trailing\nfoo();"],
