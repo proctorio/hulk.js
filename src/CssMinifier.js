@@ -58,7 +58,7 @@ const ZERO_PROPERTIES__ = new Set([
 	"flex-basis"
 ]);
 const ASCII_NAME__ = /^[-A-Za-z]+$/u;
-const CHARSET__ = "@charset \"";
+const CHARSET__ = /^@charset "[^"]*";/u;
 const UNIT_NAME__ = /^[A-Za-z]{2,4}$/u;
 
 /**
@@ -1061,6 +1061,24 @@ function comment__(state)
 }
 
 /**
+ * @description Where a verbatim value ends with only whitespace after its ":", keeps one space as its value.
+ * @param {Object} state - Scanner state, at the ";" or "}" that ends the value, or at the end of the input.
+ */
+function loneSpace__(state)
+{
+	if (!state.pending && state.last !== " " && state.last !== "\f") return;
+
+	let end = state.index;
+
+	while (end > state.copied && isWhitespaceCode__(state.content.charCodeAt(end - 1))) end--;
+	flush__(state, end);
+	state.copied = state.index;
+	state.parts.push(" ", vault__(state.spans, " "));
+	state.pending = false;
+	state.last = MARK__;
+}
+
+/**
  * @description Before a token in normal mode: starts a pending verbatim value, emits a pending newline space.
  * @param {Object} state - Scanner state.
  * @param {number} code - The token's first character.
@@ -1072,17 +1090,7 @@ function prepare__(state, code, comment)
 
 	if (startsValue) state.valuePending = false;
 
-	if (startsValue && (code === 0x3B || code === 0x7D) && (state.pending || state.last === " " || state.last === "\f"))
-	{
-		let end = state.index;
-
-		while (end > state.copied && isWhitespaceCode__(state.content.charCodeAt(end - 1))) end--;
-		flush__(state, end);
-		state.copied = state.index;
-		state.parts.push(" ", vault__(state.spans, " "));
-		state.pending = false;
-		state.last = MARK__;
-	}
+	if (startsValue && (code === 0x3B || code === 0x7D)) loneSpace__(state);
 
 	if (state.pending && (!comment || (startsValue && code !== 0x3B && code !== 0x7D)))
 	{
@@ -1159,6 +1167,7 @@ function scanCss__(content, spans)
 		while (state.index < content.length) step__(state);
 	} while (endAtEof__(state));
 
+	if (state.valuePending) loneSpace__(state);
 	commit__(state);
 	flush__(state, content.length);
 
@@ -1166,7 +1175,19 @@ function scanCss__(content, spans)
 }
 
 /**
- * @description Minifies CSS content; one that would start with an @charset declaration only once minified stays as written.
+ * @description Reads the encoding declaration a stylesheet starts with.
+ * @param {string} text - CSS.
+ * @return {string} The declaration, or an empty string when the text does not start with one.
+ */
+function charsetDeclaration__(text)
+{
+	const found = CHARSET__.exec(text);
+
+	return found === null ? "" : found[0];
+}
+
+/**
+ * @description Minifies CSS content; one whose minified form would start with another encoding declaration stays as written.
  * @param {string} content - Original CSS content.
  * @return {string} Minified output of the given CSS content.
  */
@@ -1186,7 +1207,7 @@ function minifyCss__(content)
 
 	const output = restoreVault__(spans, minified);
 
-	return output.startsWith(CHARSET__) && !content.startsWith(CHARSET__) ? content : output;
+	return charsetDeclaration__(output) === charsetDeclaration__(content) ? output : content;
 }
 
 export { minifyCss__ };

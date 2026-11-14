@@ -286,13 +286,17 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 		]);
 	});
 
-	it("diff r6: a stylesheet that would start with @charset only once minified stays as written (red on main)", () =>
+	it("diff r6, r7: a stylesheet whose minified form would start with another encoding declaration stays as written (red on main)", () =>
 	{
-		// only the exact bytes '@charset "' at the very start declare the encoding; anywhere else the rule is ignored, so
-		// trimming the whitespace or comment before it would switch how a standalone file is decoded
+		// only the exact bytes '@charset "label";' at the very start declare the encoding; anything else is an ignored
+		// rule, so trimming the whitespace or comment before it, or a comment inside it, would switch how a standalone
+		// file is decoded (and dropping its ";" would undo one)
 		expectCases([
 			["\n@charset \"iso-8859-1\";\na{b:c}", "\n@charset \"iso-8859-1\";\na{b:c}"],
 			["/* x */@charset \"iso-8859-1\";\na { b : c }", "/* x */@charset \"iso-8859-1\";\na { b : c }"],
+			["@charset \"iso-8859-1\"/* text */;\na{content:\"\u00E9\"}", "@charset \"iso-8859-1\"/* text */;\na{content:\"\u00E9\"}"],
+			["@charset \"iso-8859-1\";}\na { b : c }", "@charset \"iso-8859-1\";}\na { b : c }"],
+			["@charset \"iso-8859-1\" ;\na { b : c }", "@charset \"iso-8859-1\" ;a{b:c}"],
 
 			// controls: a declaration already at the start, or a rule that is no declaration (any case, single quotes), is
 			// minified as before
@@ -528,7 +532,12 @@ describe("CSS custom-property values stay as written (deviation from PLAN.md, se
 			["a{--x:\n}", "a{--x: }"],
 			["a{ --x : ; }", "a{--x: }"],
 			["a{--x:\f;}", "a{--x: }"],
-			["@property --x{initial-value: ;}", "@property --x{initial-value: }"]
+			["@property --x{initial-value: ;}", "@property --x{initial-value: }"],
+
+			// diff r7: also when the end of the input cuts it off (control: none after the ":" stays none)
+			["a{--x:\n", "a{--x: "],
+			["a{--x: ", "a{--x: "],
+			["a{--x:", "a{--x:"]
 		]);
 	});
 });
