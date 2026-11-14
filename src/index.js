@@ -1,3 +1,5 @@
+import { stripJsComments__ } from "./JsComments.js";
+
 // HTML void elements: the self-closing "/" before ">" is never meaningful for these (browsers
 // treat "<img ... />" and "<img ...>" identically), unlike svg/mathml foreign content elements
 // (e.g. <path/>, <circle/>), where the "/" is what tells the parser the element has no children.
@@ -114,7 +116,7 @@ function _minifiSvg__(content)
  */
 function _minifiJs__(content)
 {
-	const minified = content.replaceAll(/(^\s*|^)\/\*[\S\s]*?\*\/|(^\s*|^)\/\/.*$/gum, "$1")
+	const minified = stripJsComments__(content)
 		.replaceAll(/\s+$/gum, "")
 		.trim();
 
