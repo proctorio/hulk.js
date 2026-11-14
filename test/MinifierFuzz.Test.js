@@ -22,6 +22,10 @@ const TOKENS__ = [
 	"return", "yield", "of", "/re/", "x++", "\u0001", "\u00010\u0001", "__PRESERVE_BLOCK_0__", "$&", "$$", "a", "1"
 ];
 const MARK__ = String.fromCharCode(1);
+
+// SVG comes back as written when it holds a character XML forbids (diff r5), U+0001 among them, so it also runs on the
+// tokens without one, to reach its rules
+const XML_TOKENS__ = TOKENS__.filter(token => ![MARK__, "\f", "\uD800"].some(char => token.includes(char)));
 const MARKER__ = new RegExp(`${MARK__}\\d+${MARK__}`, "gu");
 const CASES__ = 5000;
 const MAX_TOKENS__ = 40;
@@ -58,9 +62,11 @@ function marks__(text)
 
 describe("minify__ on seeded random inputs", { timeout: 120000 }, () =>
 {
-	for (const extension of ["html", "css", "svg", "js"])
+	for (const [extension, tokens] of [["html", TOKENS__], ["css", TOKENS__], ["svg", TOKENS__], ["js", TOKENS__], ["svg", XML_TOKENS__]])
 	{
-		it(`${extension}: never throws, never leaks a vault marker`, () =>
+		const xmlOnly = tokens === XML_TOKENS__;
+
+		it(`${extension}${xmlOnly ? " (XML characters only)" : ""}: never throws, never leaks a vault marker`, () =>
 		{
 			const random = prng__(47101);
 			const leaks = [];
@@ -72,7 +78,7 @@ describe("minify__ on seeded random inputs", { timeout: 120000 }, () =>
 				let input = "";
 				const length = 1 + Math.floor(random() * MAX_TOKENS__);
 
-				for (let j = 0; j < length; j++) input += TOKENS__[Math.floor(random() * TOKENS__.length)];
+				for (let j = 0; j < length; j++) input += tokens[Math.floor(random() * tokens.length)];
 
 				const output = minify__(input, extension);
 
@@ -98,11 +104,11 @@ describe("minify__ on seeded random inputs", { timeout: 120000 }, () =>
 
 			expect(leaks).toEqual([]);
 
-			// positive control: the inputs reach the rules (a share is rewritten; random SVG and JS are often malformed or
-			// ambiguous and come back as written, and about half the SVG inputs hold a <script> or <style> token, which
-			// turns number edits off since diff r4) and the U+0001 paths
-			expect(changed).toBeGreaterThan(CASES__ * (extension === "svg" ? 0.05 : 0.1));
-			expect(withMarks).toBeGreaterThan(CASES__ * 0.1);
+			// positive control: the inputs reach the rules (a share is rewritten; random JS is often ambiguous and comes back
+			// as written; random SVG mostly gives up at its first malformed construct, which also turns its number edits off,
+			// or holds a character XML forbids and comes back whole) and the U+0001 paths
+			expect(changed).toBeGreaterThan(CASES__ * (extension === "svg" ? 0.01 : 0.1));
+			expect(withMarks).toBeGreaterThan(xmlOnly ? -1 : CASES__ * 0.1);
 		});
 	}
 });

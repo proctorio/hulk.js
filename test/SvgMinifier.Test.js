@@ -237,9 +237,14 @@ describe("SVG reviewer probes", () =>
 
 	it("r1: names are case-sensitive (red on main)", () =>
 	{
-		const input = "<svg viewbox=\"0 0 10.0 10\"><linearGradient gradientTransform=\"rotate(45.0)\"/><lineargradient gradientTransform=\"rotate(45.0)\"/><linearGradient gradienttransform=\"rotate(45.0)\"/></svg>";
+		const input = "<svg viewbox=\"0 0 10.0 10\"><linearGradient gradientTransform=\"rotate(45.0)\"/><linearGradient gradienttransform=\"rotate(45.0)\"/></svg>";
 
-		expect(svg(input)).toBe("<svg viewbox=\"0 0 10.0 10\"><linearGradient gradientTransform=\"rotate(45)\"/><lineargradient gradientTransform=\"rotate(45.0)\"/><linearGradient gradienttransform=\"rotate(45.0)\"/></svg>");
+		expect(svg(input)).toBe("<svg viewbox=\"0 0 10.0 10\"><linearGradient gradientTransform=\"rotate(45)\"/><linearGradient gradienttransform=\"rotate(45.0)\"/></svg>");
+
+		// an element name in another case is no SVG element at all, so the document keeps its numbers (diff r5)
+		const unknown = "<svg><lineargradient gradientTransform=\"rotate(45.0)\"/><rect width=\"1.0\"/></svg>";
+
+		expect(svg(unknown)).toBe(unknown);
 	});
 
 	it("r1: a DTD entity value keeps its spaces (red on main)", () =>
@@ -461,7 +466,7 @@ describe("SVG output main already gets right is unchanged", () =>
 		expect(svg("<svg><path d=\"M0,0c-0.385,1.398-0.936,2.775-1.127,4.2 c0.381-1.599,0.877-3.179,1.124-4.798z\"/></svg>")).toBe("<svg><path d=\"M0,0c-.385,1.398-.936,2.775-1.127,4.2 c.381-1.599,.877-3.179,1.124-4.798z\"/></svg>");
 	});
 
-	it("diff r3, r4: no number edits when CSS or script in the document can read attribute text (red on main)", () =>
+	it("diff r3, r4, r5: no number edits when CSS or script in the document can read attribute text (red on main)", () =>
 	{
 		// a style element can match or print an attribute's text however it is spelled (escapes, character references,
 		// any case), a script can read it, an external sheet is unknown, and attr() in a style attribute reads it too
@@ -479,10 +484,33 @@ describe("SVG output main already gets right is unchanged", () =>
 			`${root}<style type="text/css">rect{fill:red}</style><rect width="1.0"/></svg>`,
 			`${root}<script>console.log(1)</script><rect width="1.0"/></svg>`,
 			`${root}<link xmlns="http://www.w3.org/1999/xhtml" rel="stylesheet" href="a.css"/><rect width="1.0"/></svg>`,
-			`${root}<rect width="1.0" style="--w:attr(width)"/></svg>`
+			`${root}<rect width="1.0" style="--w:attr(width)"/></svg>`,
+
+			// diff r5: numbers change only when every element is a known inert one and nothing else can read them
+			"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1.0\" onload=\"console.log(this.getAttribute('width'))\"/>",
+			"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1.0\" ONLOAD=\"f()\"/>",
+			`${root}<rect width="1.0" style="--w:a\\74tr(width)"/></svg>`,
+			`${root}<rect width="1.0" style="--w:a&#116;tr(width)"/></svg>`,
+			`${root}<rect width="1.0" fill="ATTR(x)"/></svg>`,
+			`${root}<rect width="1.0"><set attributeName="onclick" to="alert(this.getAttribute('width'))"/></rect></svg>`,
+			`${root}<rect width="1.0"><set attributeName=" ONclick" to="f()"/></rect></svg>`,
+			`${root}<a href="javascript:alert(document.querySelector('rect').getAttribute('width'))"><rect width="1.0"/></a></svg>`,
+			`${root}<foreignObject><div xmlns="http://www.w3.org/1999/xhtml"/></foreignObject><rect width="1.0"/></svg>`,
+			`${root}<h:div xmlns:h="http://www.w3.org/1999/xhtml"/><rect width="1.0"/></svg>`,
+			`${root}<unknown/><rect width="1.0"/></svg>`,
+			`${root}<?php echo 1 ?><rect width="1.0"/></svg>`,
+			`${root}<rect width="1.0"/><g a></svg>`,
+			"<svg><script>f()</script><rect width=\"1.0\"/></svg>"
 		];
 
 		for (const input of inputs) expect(svg(input), input).toBe(input);
+
+		// diff r5 controls: elements of other namespaces, a foreignObject of SVG, the declaration, and names or values that
+		// only hold "on" later still allow number edits
+		const metadata = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:i=\"http://ns.adobe.com/AdobeIllustrator/10.0/\" xmlns:x=\"\">";
+
+		expect(svg(`${metadata}<i:pgf width="1.0"/><x:script/><foreignObject width="1.0"><rect width="1.0"/></foreignObject></svg>`)).toBe(`${metadata}<i:pgf width="1.0"/><x:script/><foreignObject width="1"><rect width="1"/></foreignObject></svg>`);
+		expect(svg(`<?xml version="1.0"?>${root}<rect width="1.0" class="button" opacity="0.50"><set attributeName="opacity" to="0.5"/></rect></svg>`)).toBe(`<?xml version="1.0"?>${root}<rect width="1" class="button" opacity=".5"><set attributeName="opacity" to="0.5"/></rect></svg>`);
 
 		// controls: nothing that reads attributes, though "[", "style" and "script" appear as text and names
 		expect(svg(`${root}<rect width="1.0" class="style script"/><text>[1] style</text></svg>`)).toBe(`${root}<rect width="1" class="style script"/><text>[1] style</text></svg>`);
@@ -816,7 +844,7 @@ describe("SVG malformed markup: the rest stays as written", () =>
 		const cases = [
 			"<g", "<g a>", "<g a=b>", "<g a=\"b\"c=\"d\">", "<g a=\"b\" a=\"c\">", "<g a=\"<\">", "<g a=\"b>", "<g/ >", "< g>",
 			"<1g>", "<-g>", "<.g>", "</svg>", "</ g>", "</h>", "</g", "<!x>", "<! x -->", "<!-- x", "<!-- x -- y", "<![CDATA[ x",
-			"<?x", "<g a = >", "<! -- a -- b -->", "<\u0001>", "<"
+			"<?x", "<g a = >", "<! -- a -- b -->", "<"
 		];
 
 		for (const tail of cases)
@@ -843,24 +871,46 @@ describe("SVG malformed markup: the rest stays as written", () =>
 		expect(svg(`${root} <!----> <!-- a-b <!- c --> <rect width="1.0"/> </svg>`)).toBe(`${root}<rect width="1"/></svg>`);
 	});
 
-	it("diff r4: a comment holding a character XML forbids, or space before the XML declaration, keeps the document rejected (red on main)", () =>
+	it("diff r4, r5: a character XML forbids anywhere, or anything before the XML declaration, keeps the document as written (red on main)", () =>
 	{
 		const root = "<svg xmlns=\"http://www.w3.org/2000/svg\">";
+		const inputs = [];
 
-		for (const char of ["\u0000", "\u0008", "\u000B", "\u000C", "\u001F", "\uFFFE", "\uFFFF", "\uD800", "\uDC00", "a\uD800", "\uD800\uD801", "\uDBFF\uE000"])
+		for (const char of ["\u0000", "\u0001", "\u0008", "\u000B", "\u000C", "\u001F", "\uFFFE", "\uFFFF", "\uD800", "\uDC00", "a\uD800", "\uD800\uD801", "\uDBFF\uE000"])
 		{
-			const comment = `<!-- a${char}b -->`;
-
-			expect(svg(`${root} ${comment} <rect width="1.0"/> </svg>`), JSON.stringify(char)).toBe(`${root}${comment} <rect width="1.0"/> </svg>`);
+			inputs.push(`${root} <!-- a${char}b --> <rect width="1.0"/> </svg>`);
 		}
 
-		for (const lead of [" ", "\n", "\r\n\t "])
+		inputs.push(
+			`${root} <g/> <\u0001> <g/> </svg>`,
+			`${root}<text>a\u0000b</text> <rect width="1.0"/></svg>`,
+			`${root}<rect id="a\u0000b" width="1.0"/></svg>`,
+			`${root}<style><![CDATA[/*\u0000*/a{b:c}]]></style></svg>`,
+			`${root}<style>/*\u0000*/a{b:c}</style></svg>`,
+			`${root}<script>//\u0000\nf()</script></svg>`,
+			`${root}<script>\u000Cf()</script></svg>`,
+			`${root}<style>/* ]]> */a{b:c}</style></svg>`,
+			`${root}<script>// ]]>\nf()</script></svg>`
+		);
+
+		for (const lead of [" ", "\n", "\r\n\t ", "<!-- c -->", "<!-- c -->\n"])
 		{
-			expect(svg(`${lead}<?xml version="1.0"?>\n${root}<rect width="1.0"/></svg>`), JSON.stringify(lead)).toBe(`${lead}<?xml version="1.0"?>${root}<rect width="1"/></svg>`);
+			inputs.push(`${lead}<?xml version="1.0"?>\n${root}<rect width="1.0"/></svg>`);
 		}
 
-		// controls: tab, LF, CR, a surrogate pair and the last BMP characters are XML; space before other markup still goes
+		inputs.push(
+			`${root} <?xml version="1.0"?> <rect width="1.0"/> </svg>`,
+			`${root} <?XML version="1.0"?> <rect width="1.0"/> </svg>`,
+			`${root} <rect width="1.0"/> </svg><?xml?>`,
+			`${root} <?x?> <?xml version="1.0"?> <rect width="1.0"/> </svg>`
+		);
+
+		for (const input of inputs) expect(svg(input), JSON.stringify(input)).toBe(input);
+
+		// controls: tab, LF, CR, a surrogate pair and the last BMP characters are XML; a declaration at the start stays
+		// and the rest is minified; space before other markup still goes, as does a PI whose name only starts with xml
 		expect(svg(`${root} <!-- \t\n\r\uD83D\uDE00\uE000\uFFFD --> <rect width="1.0"/></svg>`)).toBe(`${root}<rect width="1"/></svg>`);
+		expect(svg(`<?xml version="1.0"?>\n${root} <rect width="1.0"/></svg>`)).toBe(`<?xml version="1.0"?>${root}<rect width="1"/></svg>`);
 		expect(svg(`\n<?xml-stylesheet href="a.css"?>\n${root}</svg>`)).toBe(`<?xml-stylesheet href="a.css"?>${root}</svg>`);
 		expect(svg(`\n${root}<rect width="1.0"/></svg>`)).toBe(`${root}<rect width="1"/></svg>`);
 	});
@@ -868,14 +918,13 @@ describe("SVG malformed markup: the rest stays as written", () =>
 
 describe("SVG markers", () =>
 {
-	it("U+0001 in text, values, comments and payloads comes back as written (main already does this right)", () =>
+	it("U+0001 in text, values, comments and payloads comes back as written, the whole document (red on main)", () =>
 	{
 		const input = "<svg>\u0001<g id=\"\u00010\u0001\"><text>\u00011\u0001</text><!-- 2 --><style>a{content:\"\u0001\"}</style></g>\u0001</svg>";
 
-		expect(svg(input)).toBe(`<svg>\u0001<g id="\u00010\u0001"><text>\u00011\u0001</text><style>${payload("a{content:\"\u0001\"}", "css")}</style></g>\u0001</svg>`);
-
-		// U+0001 is no XML character: a comment holding one latches (diff r4), and the rest comes back as written
-		expect(svg("<svg> <g/> <!-- \u00012\u0001 --> <g/> </svg>")).toBe("<svg><g/><!-- \u00012\u0001 --> <g/> </svg>");
+		// U+0001 is no XML character, so a document holding one comes back whole, as written (diff r5)
+		expect(svg(input)).toBe(input);
+		expect(svg("<svg> <g/> <!-- \u00012\u0001 --> <g/> </svg>")).toBe("<svg> <g/> <!-- \u00012\u0001 --> <g/> </svg>");
 	});
 
 	it("many markers next to number, comment and whitespace triggers (red on main)", () =>
@@ -912,6 +961,9 @@ describe("SVG scaling: every loop on long worst-case runs", () =>
 		[false, "one long comment of XML characters (diff r4)", () => `<svg><!-- ${"→\uD83D\uDE00".repeat(LARGE__ / 3)} --></svg>`, () => "<svg></svg>"],
 		[true, "many comments with a forbidden character (diff r4)", () => `<svg>${"<!-- →\u000C -->".repeat(LARGE__ / 11)}</svg>`, () => `<svg>${"<!-- →\u000C -->".repeat(LARGE__ / 11)}</svg>`],
 		[true, "space before a late XML declaration (diff r4)", () => `${" ".repeat(LARGE__)}<?xml version="1.0"?><svg id="→"/>`, () => `${" ".repeat(LARGE__)}<?xml version="1.0"?><svg id="→"/>`],
+		[true, "many PIs before a late XML declaration (diff r5)", () => `<svg> ${"<?x →?>".repeat(LARGE__ / 7)} <?xml version="1.0"?></svg>`, () => `<svg> ${"<?x →?>".repeat(LARGE__ / 7)} <?xml version="1.0"?></svg>`],
+		[true, "many attributes named like handlers (diff r5)", () => `<svg width="1.0"${Array.from({ length: LARGE__ / 12 }, (unused, index) => ` on${index}="→"`).join("")}/>`, () => `<svg width="1.0"${Array.from({ length: LARGE__ / 12 }, (unused, index) => ` on${index}="→"`).join("")}/>`],
+		[false, "a long value of near-attr text (diff r5)", () => `<svg width="1.0" class="${"att→".repeat(LARGE__ / 4)}"/>`, () => `<svg width="1" class="${"att→".repeat(LARGE__ / 4)}"/>`],
 		[false, "comment openers without an end", () => `<svg>${"<!--→".repeat(LARGE__ / 5)}`, () => `<svg>${"<!--→".repeat(LARGE__ / 5)}`],
 		[false, "an unclosed quote", () => `<svg a="${"→".repeat(LARGE__)}`, () => `<svg a="${"→".repeat(LARGE__)}`],
 		[false, "many CDATA sections", () => `<svg>${"<![CDATA[→]]>".repeat(LARGE__ / 12)}</svg>`, () => `<svg>${"<![CDATA[→]]>".repeat(LARGE__ / 12)}</svg>`],

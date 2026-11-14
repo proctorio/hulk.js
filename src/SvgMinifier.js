@@ -6,15 +6,25 @@ import { afterNext__, doctypeEnd__, skipSpace__, stickyAt__ } from "./SvgSyntax.
 import { MARK__, restoreVault__, vault__ } from "./Vault.js";
 
 const SVG_NAMESPACE__ = "http://www.w3.org/2000/svg";
+const XHTML_NAMESPACE__ = "http://www.w3.org/1999/xhtml";
 const VERBATIM_CONTENT__ = new Set(["text", "tspan", "textPath", "title", "desc", "foreignObject", "script", "style"]);
 const JS_TYPES__ = new Set(["text/javascript", "application/javascript", "text/ecmascript", "application/ecmascript"]);
 const ASCII_SPACE__ = "\t\n\f\r ";
+const INERT_ELEMENTS__ = new Set([
+	"svg", "g", "defs", "symbol", "use", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan",
+	"textPath", "title", "desc", "metadata", "linearGradient", "radialGradient", "stop", "pattern", "clipPath", "mask",
+	"marker", "image", "filter", "foreignObject", "switch", "view", "animate", "animateTransform", "animateMotion", "set", "mpath",
+	"feBlend", "feColorMatrix", "feComponentTransfer", "feComposite", "feConvolveMatrix", "feDiffuseLighting",
+	"feDisplacementMap", "feDistantLight", "feDropShadow", "feFlood", "feFuncA", "feFuncB", "feFuncG", "feFuncR",
+	"feGaussianBlur", "feImage", "feMerge", "feMergeNode", "feMorphology", "feOffset", "fePointLight",
+	"feSpecularLighting", "feSpotLight", "feTile", "feTurbulence"
+]);
 const NAME_START_NOT__ = "-.0123456789";
 
 const NAME__ = new RegExp(`[^\\t\\n\\r "'&/<=>?!${MARK__}]+`, "uy");
 const DOCTYPE__ = /<!doctype/iu;
-const ATTRIBUTE_READERS__ = /[<:](?:link|script|style)[\t\n\r />]|<\?xml-stylesheet|attr\(/iu;
-const LATE_DECLARATION__ = /[\t\n\r ]+(?=<\?xml[\t\n\r ])/uy;
+const READABLE_VALUE__ = /attr|[&\\]/iu;
+const XML_DECLARATION__ = /<\?xml[\t\n\r ?]/iuy;
 const ASCII_UPPER__ = /[A-Z]+/gu;
 const PAYLOAD_UNSAFE__ = /[&<]|\]\]>/u;
 
@@ -125,7 +135,7 @@ function xmlChars__(content, start, end)
 }
 
 /**
- * @description Scans a comment, left exposed for the comment strip; it must end at its first "--" and hold only XML characters.
+ * @description Scans a comment, left exposed for the comment strip; it must end at its first "--".
  * @param {Object} scan - Scanner state.
  * @param {number} start - Index of "<!--".
  * @return {number} Index after the comment, or -1 when it is not a well-formed comment.
@@ -135,7 +145,7 @@ function scanComment__(scan, start)
 	const { content } = scan;
 	const close = content.indexOf("--", start + 4);
 
-	if (close === -1 || content[close + 2] !== ">" || !xmlChars__(content, start + 4, close)) return -1;
+	if (close === -1 || content[close + 2] !== ">") return -1;
 
 	scan.out.push(content.slice(start, close + 3));
 
@@ -238,7 +248,7 @@ function readAttributes__(content, index)
 }
 
 /**
- * @description Builds the scope of an element: its namespace, xml:space and whether its character data stays verbatim.
+ * @description Builds the scope of an element: its namespace, xml:space, whether its character data stays verbatim and whether it is inert.
  * @param {Object} scan - Scanner state; namespace prefixes the element declares are bound in it.
  * @param {string} name - Element name as written.
  * @param {Array<Object>} attributes - The element's attributes.
@@ -276,15 +286,17 @@ function openFrame__(scan, name, attributes)
 	if (colon !== -1) namespace = colon === lastColon ? (scan.prefixes.get(name.slice(0, colon)) || UNBOUND__).uri : "";
 
 	const textual = parent.textual || VERBATIM_CONTENT__.has(local);
+	const svg = namespace === SVG_NAMESPACE__ || namespace === null;
 
 	return {
 		name,
 		local,
-		svg: namespace === SVG_NAMESPACE__ || namespace === null,
+		svg,
 		defaultNamespace,
 		preserve,
 		textual,
 		verbatim: textual || preserve,
+		inert: svg ? INERT_ELEMENTS__.has(local) : namespace !== XHTML_NAMESPACE__,
 		declared,
 		parent
 	};
@@ -311,6 +323,26 @@ function attributeValue__(attributes, name)
 	const found = attributes.find(attribute => attribute.name === name);
 
 	return found ? found.value : null;
+}
+
+/**
+ * @description Tells whether a name starts with "on" in any case, as event handler attributes do.
+ * @param {string} name - Attribute name, or the value of an attributeName attribute.
+ * @return {boolean} True when it may name an event handler.
+ */
+function handlerName__(name)
+{
+	return asciiLower__(trimAsciiSpace__(name)).startsWith("on");
+}
+
+/**
+ * @description Tells whether an attribute lets script or CSS read attribute text: a handler, an animated handler, or a value with attr(), an escape or an entity.
+ * @param {Object} attribute - Attribute as read from the tag.
+ * @return {boolean} True when it may read other attributes.
+ */
+function readsAttributes__(attribute)
+{
+	return handlerName__(attribute.name) || READABLE_VALUE__.test(attribute.value) || (attribute.name === "attributeName" && handlerName__(attribute.value));
 }
 
 /**
@@ -360,7 +392,7 @@ function scanPayload__(scan, frame, start, minifier)
 	if (endTagAt__(content, first, frame.name))
 	{
 		const body = content.slice(start, first);
-		const minified = body.includes("&") ? "&" : minifier(body);
+		const minified = PAYLOAD_UNSAFE__.test(body) ? body : minifier(body);
 
 		if (PAYLOAD_UNSAFE__.test(minified)) return start;
 
@@ -386,7 +418,7 @@ function scanPayload__(scan, frame, start, minifier)
 }
 
 /**
- * @description Scans a start tag: whitespace normalized, values vaulted (numeric ones shortened), scope opened.
+ * @description Scans a start tag: whitespace normalized, values vaulted (shortened numbers noted for the end), scope opened.
  * @param {Object} scan - Scanner state.
  * @param {number} start - Index of "<".
  * @return {number} Index after the tag (and after a minified payload), or -1 when the tag is malformed.
@@ -400,15 +432,16 @@ function scanStartTag__(scan, start)
 	if (tag === null) return -1;
 
 	const frame = openFrame__(scan, name[0], tag.attributes);
-	const numeric = frame.svg && scan.numbers;
+
+	if (!frame.inert || tag.attributes.some(readsAttributes__)) scan.plain = false;
 
 	scan.out.push("<", name[0]);
 
 	for (const attribute of tag.attributes)
 	{
-		const value = numeric ? shortenSvgNumbers__(frame.local, attribute.name, attribute.value) : attribute.value;
+		scan.out.push(" ", attribute.name, "=", attribute.quote, vault__(scan.spans, attribute.value), attribute.quote);
 
-		scan.out.push(" ", attribute.name, "=", attribute.quote, vault__(scan.spans, value), attribute.quote);
+		if (frame.svg) scan.numbers.push([scan.spans.length - 1, shortenSvgNumbers__(frame.local, attribute.name, attribute.value)]);
 	}
 
 	scan.out.push(whitespaceRun__(tag.trailing), tag.close);
@@ -484,31 +517,53 @@ function scanMarkup__(scan, start)
 	const next = scan.content[start + 1];
 
 	if (next === "!") return scanBang__(scan, start);
-	if (next === "?") return vaultUntil__(scan, start, "?>", start + 2);
+	if (next === "?")
+	{
+		if (stickyAt__(XML_DECLARATION__, scan.content, start) === null) scan.plain = false;
+
+		return vaultUntil__(scan, start, "?>", start + 2);
+	}
 
 	return next === "/" ? scanEndTag__(scan, start) : scanStartTag__(scan, start);
 }
 
 /**
- * @description Minifies SVG content; numbers stay when CSS or script can read them, as does space before an XML declaration.
+ * @description Tells whether an XML declaration, or another PI named xml, starts at or after an index (XML allows one only at the start).
+ * @param {string} content - SVG.
+ * @param {number} from - Index to search from.
+ * @return {boolean} True when one is found.
+ */
+function declarationFrom__(content, from)
+{
+	for (let at = content.indexOf("<?", from); at !== -1; at = content.indexOf("<?", at + 2))
+	{
+		if (stickyAt__(XML_DECLARATION__, content, at) !== null) return true;
+	}
+
+	return false;
+}
+
+/**
+ * @description Minifies SVG content; a document XML rejects stays as written, numbers change only where no CSS or script can read them.
  * @param {string} content - Original SVG content.
  * @return {string} Minified output of the given SVG content.
  */
 function minifySvg__(content)
 {
+	if (!xmlChars__(content, 0, content.length) || declarationFrom__(content, 1)) return content;
+
+	const conservative = DOCTYPE__.test(content);
 	const scan = {
 		content,
 		spans: [],
 		out: [],
 		top: ROOT__,
 		prefixes: new Map(),
-		conservative: DOCTYPE__.test(content),
-		numbers: !DOCTYPE__.test(content) && !ATTRIBUTE_READERS__.test(content)
+		conservative,
+		plain: !conservative,
+		numbers: []
 	};
-	const late = stickyAt__(LATE_DECLARATION__, content, 0);
-	let at = late === null ? 0 : late[0].length;
-
-	if (at > 0) emitVaulted__(scan, content.slice(0, at));
+	let at = 0;
 
 	while (at < content.length)
 	{
@@ -522,9 +577,12 @@ function minifySvg__(content)
 		if (at === -1)
 		{
 			emitVaulted__(scan, content.slice(start));
+			scan.plain = false;
 			at = content.length;
 		}
 	}
+
+	if (scan.plain) for (const [span, value] of scan.numbers) scan.spans[span] = value;
 
 	return restoreVault__(scan.spans, stripSvgComments__(scan.out.join("")));
 }
