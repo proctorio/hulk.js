@@ -454,7 +454,7 @@ describe("SVG output main already gets right is unchanged", () =>
 	it("comments, including the forms main's regex strips", () =>
 	{
 		expect(svg("<!-- a -->\n<svg>\n  <!-- b -->\n  <g/>\n</svg><!---->")).toBe("<svg><g/></svg>");
-		expect(svg("<svg><text>a<!--x-->b</text></svg>")).toBe("<svg><text>ab</text></svg>");
+		expect(svg("<svg><text><!--x-->ab</text></svg>")).toBe("<svg><text>ab</text></svg>");
 	});
 
 	it("number rewrites on numeric attributes", () =>
@@ -688,6 +688,26 @@ describe("SVG character data", () =>
 		expect(svg("<svg>\n<!--c-->\n<?pi x?>\n<![CDATA[ c ]]>\n<g/>\n</svg>")).toBe("<svg><?pi x?><![CDATA[ c ]]><g/></svg>");
 		expect(svg("<svg><g>x <!--c--> y</g></svg>")).toBe("<svg><g>x  y</g></svg>");
 	});
+
+	it("diff r6: a comment right after text stays, since dropping it could join the text around it into ]]> or a reference (red on main)", () =>
+	{
+		// "]]>" in character data is an error and "&am" + "p;" would turn into a reference: the input XML accepts (or
+		// rejects) would be rejected (or accepted). A comment after ">", XML whitespace or at the start still goes.
+		const kept = [
+			`${ROOT__}<text>]]<!-- text -->></text></svg>`,
+			`${ROOT__}<text>&am<!-- text -->p;</text></svg>`,
+			`${ROOT__}<text>&<!-- text -->#65;</text></svg>`,
+			`${ROOT__}<text>]<!--a-->]<!--b-->></text></svg>`
+		];
+
+		for (const input of kept) expect(svg(input)).toBe(input);
+
+		// a later comment after the whitespace that goes is dropped, the first one keeps the text apart
+		expect(svg(`${ROOT__}<g>]]<!--a--> <!--b-->></g></svg>`)).toBe(`${ROOT__}<g>]]<!--a-->></g></svg>`);
+
+		// control: comments at the start, after ">" and after whitespace go
+		expect(svg(`<!--a-->${ROOT__}<text><!--b-->x <!--c-->y</text>\n<!--d--></svg>`)).toBe(`${ROOT__}<text>x y</text></svg>`);
+	});
 });
 
 describe("SVG style and script payloads", () =>
@@ -786,14 +806,33 @@ describe("SVG style and script payloads", () =>
 		expect(svg("<svg><style><![CDATA[ a { } ]]>")).toBe("<svg><style><![CDATA[ a { } ]]>");
 	});
 
-	it("a minified payload holding ]]> in plain text is not used (red on main)", () =>
+	it("a payload holding ]]> in plain text is not minified (red on main)", () =>
 	{
 		const input = "<svg><script>\nvar a = b[c[d]]>e;\n</script></svg>";
 
-		// premise: the JS minifier keeps the terminator, so only the post-check stands in the way
-		expect(payload("\nvar a = b[c[d]]>e;\n", "js")).toContain("]]>");
+		expect(svg(input)).toBe(input);
+	});
+
+	it("diff r6: a clean payload whose minified form holds ]]> is not used (main already does this right)", () =>
+	{
+		const body = "a]]/**/>b{c:d}";
+		const input = `${ROOT__}<style>${body}</style></svg>`;
+
+		// premise: the body holds no "&", "<" or "]]>", and the CSS comment removal forms "]]>", so only the check
+		// after minifying stands in the way
+		expect((/[&<]|\]\]>/u).test(body)).toBe(false);
+		expect(payload(body, "css")).toContain("]]>");
 
 		expect(svg(input)).toBe(input);
+	});
+
+	it("diff r6: a script's CDATA that starts with #! keeps the whitespace before it, so it stays no hashbang (red on main)", () =>
+	{
+		// "#!" is a hashbang only as the script's first characters; the newline before the section keeps it an error
+		const input = `${ROOT__}<script>\n<![CDATA[#! text\nconsole.log(1);]]>\n</script></svg>`;
+
+		expect(svg(input)).toBe(`${ROOT__}<script>\n<![CDATA[#! text\nconsole.log(1);]]></script></svg>`);
+		expect(svg(`${ROOT__}<script>\n<![CDATA[\n#! text\n]]></script></svg>`)).toBe(`${ROOT__}<script><![CDATA[\n#! text\n]]></script></svg>`);
 	});
 });
 

@@ -10,6 +10,7 @@ const XHTML_NAMESPACE__ = "http://www.w3.org/1999/xhtml";
 const VERBATIM_CONTENT__ = new Set(["text", "tspan", "textPath", "title", "desc", "foreignObject", "script", "style"]);
 const JS_TYPES__ = new Set(["text/javascript", "application/javascript", "text/ecmascript", "application/ecmascript"]);
 const ASCII_SPACE__ = "\t\n\f\r ";
+const COMMENT_DROPPABLE_AFTER__ = ">\t\n\r ";
 const INERT_ELEMENTS__ = new Set([
 	"svg", "g", "defs", "symbol", "use", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan",
 	"textPath", "title", "desc", "metadata", "linearGradient", "radialGradient", "stop", "pattern", "clipPath", "mask",
@@ -135,7 +136,7 @@ function xmlChars__(content, start, end)
 }
 
 /**
- * @description Scans a comment, left exposed for the comment strip; it must end at its first "--".
+ * @description Scans a comment, which must end at its first "--": exposed to the comment strip at the start or after ">" or XML whitespace, else vaulted.
  * @param {Object} scan - Scanner state.
  * @param {number} start - Index of "<!--".
  * @return {number} Index after the comment, or -1 when it is not a well-formed comment.
@@ -147,7 +148,8 @@ function scanComment__(scan, start)
 
 	if (close === -1 || content[close + 2] !== ">") return -1;
 
-	scan.out.push(content.slice(start, close + 3));
+	if (start === 0 || COMMENT_DROPPABLE_AFTER__.includes(content[start - 1])) scan.out.push(content.slice(start, close + 3));
+	else emitVaulted__(scan, content.slice(start, close + 3));
 
 	return close + 3;
 }
@@ -412,7 +414,7 @@ function scanPayload__(scan, frame, start, minifier)
 
 	if (minified.includes("]]>")) return start;
 
-	emitVaulted__(scan, `<![CDATA[${minified}]]>`);
+	emitVaulted__(scan, `${minified.startsWith("#!") ? content.slice(start, first) : ""}<![CDATA[${minified}]]>`);
 
 	return end;
 }
