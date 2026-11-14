@@ -4,6 +4,7 @@ const WHITESPACE__ = /\s/u;
 const NON_WHITESPACE__ = /\S/gu;
 const IDENTIFIER_START__ = /[\w$#\\\u0080-\uFFFF]/u;
 const IDENTIFIER_PART__ = /[\w$\\\u0080-\uFFFF]/u;
+const UNICODE_ESCAPE__ = /\\u(?:[\dA-Fa-f]{4}|\{[\dA-Fa-f]+\})/uy;
 const NUMBER__ = /0[BOXbox][\dA-F_a-f]+n?|(?:\d[\d_]*(?:\.[\d_]*)?|\.\d[\d_]*)(?:[Ee][+-]?\d[\d_]*)?n?/uy;
 
 const KEYWORDS__ = new Set([
@@ -405,20 +406,33 @@ function _scanSlash__(state)
 }
 
 /**
- * @description Scans an identifier name, keywords included.
+ * @description Scans an identifier name, keywords included; a backslash that does not start a Unicode escape refuses.
  * @param {Object} state - Scan state, at its first character.
- * @return {boolean} True: the scan goes on.
+ * @return {boolean} False on a backslash that is not a Unicode escape, else true.
  */
 function _scanWord__(state)
 {
 	const { content } = state;
 	const start = state.index;
-	let index = start + 1;
+	let index = start;
 
-	while (index < content.length && _isIdentifierPart__(content[index]))
+	do
 	{
-		index += content.charCodeAt(index) === 92 ? 2 : 1;
+		if (content.charCodeAt(index) === 92)
+		{
+			UNICODE_ESCAPE__.lastIndex = index;
+
+			const escape = UNICODE_ESCAPE__.exec(content);
+
+			if (escape === null) return false;
+			index += escape[0].length;
+		}
+		else
+		{
+			index++;
+		}
 	}
+	while (index < content.length && _isIdentifierPart__(content[index]));
 
 	const word = content.slice(start, index);
 

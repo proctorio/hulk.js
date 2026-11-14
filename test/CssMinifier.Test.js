@@ -275,6 +275,10 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 			["@container style(--x: 1){a{b:c}}", "@container style(--x: 1){a{b:c}}"],
 			["a{b:c( {x: y} )}", "a{b:c( {x: y} )}"],
 
+			// diff r4: a selector inside a function of a value (if(), selector()) keeps it, as does any ":" in brackets there
+			[".item{color:if(supports(selector(: is(.item))): red; else: blue)}", ".item{color:if(supports(selector(: is(.item))): red;else: blue)}"],
+			["a{b:x( d: e )}", "a{b:x( d: e )}"],
+
 			// controls: declarations and @media preludes lose it as on main, a custom property's lone space stays
 			["@media (min-width: 768px) and (hover:\nhover){a{color : red ;margin: 0px}}", "@media (min-width:768px) and (hover:hover){a{color:red ;margin:0}}"],
 			["a{color: red;margin:\n0px;--x: ;width: /* c */ 1px}", "a{color:red;margin:0;--x: ;width:1px}"],

@@ -461,25 +461,31 @@ describe("SVG output main already gets right is unchanged", () =>
 		expect(svg("<svg><path d=\"M0,0c-0.385,1.398-0.936,2.775-1.127,4.2 c0.381-1.599,0.877-3.179,1.124-4.798z\"/></svg>")).toBe("<svg><path d=\"M0,0c-.385,1.398-.936,2.775-1.127,4.2 c.381-1.599,.877-3.179,1.124-4.798z\"/></svg>");
 	});
 
-	it("diff r3: no number edits when the document's CSS can read attribute values (red on main)", () =>
+	it("diff r3, r4: no number edits when CSS or script in the document can read attribute text (red on main)", () =>
 	{
-		// an attribute selector (or attr(), or a stylesheet the scanner cannot see) compares the attribute's text, and
-		// main also rewrote the selector's string; the payload keeps strings as written, so the attributes stay too
+		// a style element can match or print an attribute's text however it is spelled (escapes, character references,
+		// any case), a script can read it, an external sheet is unknown, and attr() in a style attribute reads it too
 		const root = "<svg xmlns=\"http://www.w3.org/2000/svg\">";
 		const inputs = [
 			`${root}<style>rect[width="1.0"]{fill:red}</style><rect width="1.0" height="1"/></svg>`,
-			`${root}<style>rect::after{content:attr(width)}</style><rect width="1.0"/></svg>`,
-			`${root}<style>@import "a.css";</style><rect width="1.0"/></svg>`,
+			`${root}<style>rect&#91;width="1.0"&#93;{fill:red}</style><rect width="1.0" height="1"/></svg>`,
+			`${root}<style>rect::after{content:ATTR(width)}</style><rect width="1.0"/></svg>`,
+			`${root}<style>rect::after{content:a\\74tr(width)}</style><rect width="1.0"/></svg>`,
+			`${root}<style>@IMPORT "a.css";</style><rect width="1.0"/></svg>`,
+			`${root}<style><![CDATA[rect{fill:red}]]></style><rect width="1.0"/></svg>`,
+			`${root}<STYLE/><rect width="1.0"/></svg>`,
 			`<?xml-stylesheet href="a.css"?>${root}<rect width="1.0"/></svg>`,
-			"<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:s=\"http://www.w3.org/2000/svg\"><s:style>rect[width=\"1.0\"]{fill:red}</s:style><rect width=\"1.0\"/></svg>",
-			`${root}<style type="text/css">rect[width="1.0"]{fill:red}</style><rect width="1.0"/></svg>`
+			"<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:s=\"http://www.w3.org/2000/svg\"><s:style>rect{fill:red}</s:style><rect width=\"1.0\"/></svg>",
+			`${root}<style type="text/css">rect{fill:red}</style><rect width="1.0"/></svg>`,
+			`${root}<script>console.log(1)</script><rect width="1.0"/></svg>`,
+			`${root}<link xmlns="http://www.w3.org/1999/xhtml" rel="stylesheet" href="a.css"/><rect width="1.0"/></svg>`,
+			`${root}<rect width="1.0" style="--w:attr(width)"/></svg>`
 		];
 
 		for (const input of inputs) expect(svg(input), input).toBe(input);
 
-		// controls: a CDATA style with no selector on attributes, and a "[" with no style element
-		expect(svg(`${root}<style><![CDATA[rect{fill:red}]]></style><rect width="1.0"/></svg>`)).toBe(`${root}<style><![CDATA[rect{fill:red}]]></style><rect width="1"/></svg>`);
-		expect(svg(`${root}<rect width="1.0"/><text>[1]</text></svg>`)).toBe(`${root}<rect width="1"/><text>[1]</text></svg>`);
+		// controls: nothing that reads attributes, though "[", "style" and "script" appear as text and names
+		expect(svg(`${root}<rect width="1.0" class="style script"/><text>[1] style</text></svg>`)).toBe(`${root}<rect width="1" class="style script"/><text>[1] style</text></svg>`);
 	});
 
 	it("number shapes: exponents, signs, units, empty fractions, leading zeros", () =>
@@ -836,15 +842,40 @@ describe("SVG malformed markup: the rest stays as written", () =>
 		// controls: well-formed comments, the empty one and one that holds "-" and "<!-" go as before
 		expect(svg(`${root} <!----> <!-- a-b <!- c --> <rect width="1.0"/> </svg>`)).toBe(`${root}<rect width="1"/></svg>`);
 	});
+
+	it("diff r4: a comment holding a character XML forbids, or space before the XML declaration, keeps the document rejected (red on main)", () =>
+	{
+		const root = "<svg xmlns=\"http://www.w3.org/2000/svg\">";
+
+		for (const char of ["\u0000", "\u0008", "\u000B", "\u000C", "\u001F", "\uFFFE", "\uFFFF", "\uD800", "\uDC00", "a\uD800"])
+		{
+			const comment = `<!-- a${char}b -->`;
+
+			expect(svg(`${root} ${comment} <rect width="1.0"/> </svg>`), JSON.stringify(char)).toBe(`${root}${comment} <rect width="1.0"/> </svg>`);
+		}
+
+		for (const lead of [" ", "\n", "\r\n\t "])
+		{
+			expect(svg(`${lead}<?xml version="1.0"?>\n${root}<rect width="1.0"/></svg>`), JSON.stringify(lead)).toBe(`${lead}<?xml version="1.0"?>${root}<rect width="1"/></svg>`);
+		}
+
+		// controls: tab, LF, CR, a surrogate pair and the last BMP characters are XML; space before other markup still goes
+		expect(svg(`${root} <!-- \t\n\r\uD83D\uDE00\uE000\uFFFD --> <rect width="1.0"/></svg>`)).toBe(`${root}<rect width="1"/></svg>`);
+		expect(svg(`\n<?xml-stylesheet href="a.css"?>\n${root}</svg>`)).toBe(`<?xml-stylesheet href="a.css"?>${root}</svg>`);
+		expect(svg(`\n${root}<rect width="1.0"/></svg>`)).toBe(`${root}<rect width="1"/></svg>`);
+	});
 });
 
 describe("SVG markers", () =>
 {
 	it("U+0001 in text, values, comments and payloads comes back as written (main already does this right)", () =>
 	{
-		const input = "<svg>\u0001<g id=\"\u00010\u0001\"><text>\u00011\u0001</text><!-- \u00012\u0001 --><style>a{content:\"\u0001\"}</style></g>\u0001</svg>";
+		const input = "<svg>\u0001<g id=\"\u00010\u0001\"><text>\u00011\u0001</text><!-- 2 --><style>a{content:\"\u0001\"}</style></g>\u0001</svg>";
 
 		expect(svg(input)).toBe(`<svg>\u0001<g id="\u00010\u0001"><text>\u00011\u0001</text><style>${payload("a{content:\"\u0001\"}", "css")}</style></g>\u0001</svg>`);
+
+		// U+0001 is no XML character: a comment holding one latches (diff r4), and the rest comes back as written
+		expect(svg("<svg> <g/> <!-- \u00012\u0001 --> <g/> </svg>")).toBe("<svg><g/><!-- \u00012\u0001 --> <g/> </svg>");
 	});
 
 	it("many markers next to number, comment and whitespace triggers (red on main)", () =>

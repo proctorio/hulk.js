@@ -345,6 +345,19 @@ describe("HTML type and boolean attributes", () =>
 		expect(html("<input checked=\"checked\"><svg width=\"10\"></svg>")).toBe("<input checked><svg width=\"10\"></svg>");
 	});
 
+	it("diff r4: a MathML script or style keeps its type, MathML has no default (red on main)", () =>
+	{
+		// under <math> (an <svg> there included, it is a MathML element) script and style are plain MathML elements
+		for (const input of [
+			"<math><script type=\"text/javascript\">1</script></math>",
+			"<math><style type=\"text/css\">a</style></math>",
+			"<math><svg><style type=\"text/css\">a</style></svg></math>"
+		]) expect(html(input), input).toBe(input);
+
+		// controls: the default type still goes in HTML and in SVG
+		expect(html("<script type=\"text/javascript\">1</script><svg><style type=\"text/css\">a</style></svg>")).toBe("<script>1</script><svg><style>a</style></svg>");
+	});
+
 	it("a stray \"/\" before \">\" keeps its space", () =>
 	{
 		expect(html("<br / >")).toBe("<br / >");

@@ -99,8 +99,9 @@ describe("minify__ on seeded random inputs", { timeout: 120000 }, () =>
 			expect(leaks).toEqual([]);
 
 			// positive control: the inputs reach the rules (a share is rewritten; random SVG and JS are often malformed or
-			// ambiguous and come back as written) and the U+0001 paths
-			expect(changed).toBeGreaterThan(CASES__ * 0.1);
+			// ambiguous and come back as written, and about half the SVG inputs hold a <script> or <style> token, which
+			// turns number edits off since diff r4) and the U+0001 paths
+			expect(changed).toBeGreaterThan(CASES__ * (extension === "svg" ? 0.05 : 0.1));
 			expect(withMarks).toBeGreaterThan(CASES__ * 0.1);
 		});
 	}

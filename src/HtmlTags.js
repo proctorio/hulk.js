@@ -430,21 +430,22 @@ function partText__(state, part, next, edits)
 
 /**
  * @description Writes a complete tag in its minified form: values vaulted, "=" spacing and the space before ">" dropped,
- * a start tag's default type dropped, and for HTML start tags boolean values and a void element's "/" dropped.
+ * an HTML or SVG start tag's default type dropped, and for HTML start tags boolean values and a void element's "/" dropped.
  * @param {Object} state - Scanner state.
  * @param {Object} tag - Complete tag from readTag__.
- * @param {boolean} html - Whether the tag is in HTML content rather than foreign content.
+ * @param {string} namespace - The tag's namespace: "html", "svg" or "math" (MathML has no default type).
  * @return {string} The tag, its values vaulted.
  */
-function tagText__(state, tag, html)
+function tagText__(state, tag, namespace)
 {
 	const { text } = state;
+	const html = namespace === "html";
 	const edits = {
 		start: !tag.isEnd,
 		html: html && !tag.isEnd,
 		voidSlash: html && !tag.isEnd && tag.selfClosing && isVoid__(tag.name)
 	};
-	const dropType = edits.start && typeDroppable__(text, tag);
+	const dropType = edits.start && namespace !== "math" && typeDroppable__(text, tag);
 	let output = dropType ? `<${tag.name}` : escapeMarks__(state, tag.start, tag.nameEnd);
 	let previous = null;
 	let part = tagPart__(text, tag.nameEnd);
@@ -518,7 +519,7 @@ function collapseSpace__(text, betweenTags)
  */
 function tagSource__(state, tag)
 {
-	return restoreVault__(state.spans, collapseSpace__(tagText__(state, tag, true), false));
+	return restoreVault__(state.spans, collapseSpace__(tagText__(state, tag, "html"), false));
 }
 
 export {

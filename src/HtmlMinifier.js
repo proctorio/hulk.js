@@ -59,12 +59,12 @@ function emit__(state, output)
  * @description Adds a tag in its minified form to the output, unless a preserved block is open.
  * @param {Object} state - Scanner state.
  * @param {Object} tag - Complete tag.
- * @param {boolean} html - Whether the tag is in HTML content rather than foreign content.
+ * @param {string} namespace - The tag's namespace: "html", "svg" or "math".
  * @return {void}
  */
-function emitTag__(state, tag, html)
+function emitTag__(state, tag, namespace)
 {
-	if (state.block === null) state.parts.push(tagText__(state, tag, html));
+	if (state.block === null) state.parts.push(tagText__(state, tag, namespace));
 }
 
 /**
@@ -173,10 +173,10 @@ function emitElement__(state, tag, content, endTag)
 		return;
 	}
 
-	parts.push(tagText__(state, tag, true));
+	parts.push(tagText__(state, tag, "html"));
 
 	if (content !== "") parts.push(vault__(spans, content));
-	if (endTag !== null) parts.push(tagText__(state, endTag, true));
+	if (endTag !== null) parts.push(tagText__(state, endTag, "html"));
 }
 
 /**
@@ -221,7 +221,7 @@ function plaintext__(state, tag)
 {
 	const { text } = state;
 
-	emitTag__(state, tag, true);
+	emitTag__(state, tag, "html");
 
 	if (tag.end < text.length) emit__(state, vault__(state.spans, text.slice(tag.end)));
 
@@ -258,7 +258,7 @@ function htmlStart__(state, tag)
 	else if (name === "plaintext") plaintext__(state, tag);
 	else
 	{
-		emitTag__(state, tag, !FOREIGN_ROOTS__.has(name));
+		emitTag__(state, tag, FOREIGN_ROOTS__.has(name) ? name : "html");
 
 		if (FOREIGN_ROOTS__.has(name) && !tag.selfClosing) push__(state, tag);
 
@@ -282,7 +282,7 @@ function foreignStart__(state, tag)
 	}
 	else
 	{
-		emitTag__(state, tag, false);
+		emitTag__(state, tag, state.foreign[0]);
 
 		if (!tag.selfClosing) push__(state, tag);
 
@@ -310,7 +310,7 @@ function htmlEnd__(state, tag)
 			state.parts.push(vault__(state.spans, state.text.slice(block.start, tag.end)));
 		}
 	}
-	else emitTag__(state, tag, true);
+	else emitTag__(state, tag, "html");
 
 	advance__(state, tag.end);
 }
@@ -337,8 +337,10 @@ function foreignEnd__(state, tag)
 	else if (depth === -1) latch__(state, tag.start);
 	else
 	{
+		const namespace = state.foreign[0];
+
 		popTo__(state, depth);
-		emitTag__(state, tag, false);
+		emitTag__(state, tag, namespace);
 		advance__(state, tag.end);
 	}
 }

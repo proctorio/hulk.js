@@ -602,11 +602,11 @@ function resetSegment__(state)
 /**
  * @description Turns the whitespace and comments recorded after a ":" of the current segment into one space.
  * @param {Object} state - Scanner state.
- * @param {boolean} all - Whether runs recorded outside any block count too.
+ * @param {boolean} all - Whether runs recorded outside a block, or inside brackets, count too.
  */
 function dropSpaces__(state, all)
 {
-	for (const [part, inBlock] of state.spaces) if (all || inBlock) state.parts[part] = " ";
+	for (const [part, topLevel] of state.spaces) if (all || topLevel) state.parts[part] = " ";
 	state.spaces = [];
 }
 
@@ -622,7 +622,7 @@ function commit__(state)
 }
 
 /**
- * @description After a ":", vaults the whitespace and comments up to the next token; a declaration turns them into a space.
+ * @description After a ":", vaults the whitespace and comments up to the next token; a declaration, outside brackets, drops them.
  * @param {Object} state - Scanner state, just after the ":".
  */
 function colonSpace__(state)
@@ -643,7 +643,7 @@ function colonSpace__(state)
 	if (end === state.index) return;
 
 	flush__(state, state.index);
-	state.spaces.push([state.parts.length, state.block !== ""]);
+	state.spaces.push([state.parts.length, state.block !== "" && state.parens === 0]);
 	state.parts.push(vault__(state.spans, content.slice(state.index, end)));
 	state.copied = end;
 	state.index = end;

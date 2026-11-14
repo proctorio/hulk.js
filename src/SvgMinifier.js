@@ -13,8 +13,8 @@ const NAME_START_NOT__ = "-.0123456789";
 
 const NAME__ = new RegExp(`[^\\t\\n\\r "'&/<=>?!${MARK__}]+`, "uy");
 const DOCTYPE__ = /<!doctype/iu;
-const STYLE_ELEMENT__ = /[<:]style[\t\n\r />]|<\?xml-stylesheet/u;
-const ATTRIBUTE_READ__ = /(?<!<!\[CDATA)\[(?!CDATA\[)|@import|attr\(|<\?xml-stylesheet/u;
+const ATTRIBUTE_READERS__ = /[<:](?:link|script|style)[\t\n\r />]|<\?xml-stylesheet|attr\(/iu;
+const LATE_DECLARATION__ = /[\t\n\r ]+(?=<\?xml[\t\n\r ])/uy;
 const ASCII_UPPER__ = /[A-Z]+/gu;
 const PAYLOAD_UNSAFE__ = /[&<]|\]\]>/u;
 
@@ -80,16 +80,6 @@ function emitVaulted__(scan, text)
 }
 
 /**
- * @description Emits text the comment strip may see, each U+0001 in it vaulted on its own.
- * @param {Object} scan - Scanner state.
- * @param {string} text - Text to emit.
- */
-function emitExposed__(scan, text)
-{
-	scan.out.push(text.replaceAll(MARK__, () => vault__(scan.spans, MARK__)));
-}
-
-/**
  * @description Vaults a construct verbatim up to its terminator.
  * @param {Object} scan - Scanner state.
  * @param {number} start - Index of the construct's "<".
@@ -107,7 +97,35 @@ function vaultUntil__(scan, start, terminator, from)
 }
 
 /**
- * @description Scans a comment, exposed for the comment strip; one whose first "--" is not "-->" is not XML.
+ * @description Tells whether a range holds only characters XML 1.0 allows (no C0 control but tab, LF and CR, no lone surrogate).
+ * @param {string} content - SVG.
+ * @param {number} start - Start of the range.
+ * @param {number} end - End of the range.
+ * @return {boolean} True when every character is an XML Char.
+ */
+function xmlChars__(content, start, end)
+{
+	for (let index = start; index < end; index++)
+	{
+		const code = content.charCodeAt(index);
+
+		if (code < 0x20 && code !== 0x09 && code !== 0x0A && code !== 0x0D) return false;
+		if (code === 0xFFFE || code === 0xFFFF || (code >= 0xDC00 && code <= 0xDFFF)) return false;
+
+		if (code >= 0xD800 && code <= 0xDBFF)
+		{
+			const low = content.charCodeAt(index + 1);
+
+			if (index + 1 >= end || low < 0xDC00 || low > 0xDFFF) return false;
+			index++;
+		}
+	}
+
+	return true;
+}
+
+/**
+ * @description Scans a comment, left exposed for the comment strip; it must end at its first "--" and hold only XML characters.
  * @param {Object} scan - Scanner state.
  * @param {number} start - Index of "<!--".
  * @return {number} Index after the comment, or -1 when it is not a well-formed comment.
@@ -117,9 +135,9 @@ function scanComment__(scan, start)
 	const { content } = scan;
 	const close = content.indexOf("--", start + 4);
 
-	if (close === -1 || content[close + 2] !== ">") return -1;
+	if (close === -1 || content[close + 2] !== ">" || !xmlChars__(content, start + 4, close)) return -1;
 
-	emitExposed__(scan, content.slice(start, close + 3));
+	scan.out.push(content.slice(start, close + 3));
 
 	return close + 3;
 }
@@ -472,7 +490,7 @@ function scanMarkup__(scan, start)
 }
 
 /**
- * @description Minifies SVG content.
+ * @description Minifies SVG content; numbers stay when CSS or script can read them, as does space before an XML declaration.
  * @param {string} content - Original SVG content.
  * @return {string} Minified output of the given SVG content.
  */
@@ -485,9 +503,12 @@ function minifySvg__(content)
 		top: ROOT__,
 		prefixes: new Map(),
 		conservative: DOCTYPE__.test(content),
-		numbers: !DOCTYPE__.test(content) && !(STYLE_ELEMENT__.test(content) && ATTRIBUTE_READ__.test(content))
+		numbers: !DOCTYPE__.test(content) && !ATTRIBUTE_READERS__.test(content)
 	};
-	let at = 0;
+	const late = stickyAt__(LATE_DECLARATION__, content, 0);
+	let at = late === null ? 0 : late[0].length;
+
+	if (at > 0) emitVaulted__(scan, content.slice(0, at));
 
 	while (at < content.length)
 	{
