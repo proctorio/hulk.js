@@ -767,6 +767,15 @@ describe("JS scan in linear time", () =>
 		expectLinear(`${parens}\n// drop\n`, parens);
 	}, SLOW_TEST_MS__);
 
+	it("minify JS reads identifiers of many escapes, and refuses a long \\u{ with no } once (diff r4)", () =>
+	{
+		const escapes = `x = '${TWO_BYTE__}'; const ${"\\u{78}\\u0079".repeat(LARGE__ / 12)} = 1;`;
+		const unclosed = `x = '${TWO_BYTE__}'; \\u{${"7".repeat(LARGE__)}\n// kept\n`;
+
+		expectLinear(`${escapes}\n// drop\n`, escapes);
+		expectLinear(unclosed, unclosed.trim());
+	}, SLOW_TEST_MS__);
+
 	it("minify JS refuses an unclosed /* once", () =>
 	{
 		const unclosed = `x = '${TWO_BYTE__}';\n/*${"a".repeat(LARGE__)}`;
