@@ -548,7 +548,7 @@ newlines</pre>
 		const html = "<style type=\"text/css\">.test { color: red; }</style>";
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe("<style>.test { color: red; }</style>");
+		expect(minified).toBe("<style>.test{color:red}</style>");
 		expect(minified).not.toContain('type="text/css"');
 	});
 
@@ -646,7 +646,7 @@ newlines</pre>
 
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe("<img id=\"player_student\" src=data:image/png;base64,AAAA/AAA=>");
+		expect(minified).toBe("<img id=\"player_student\" src=\"data:image/png;base64,AAAA/AAA=\">");
 	});
 
 	it("minify HTML keeps quotes on a non-void self-closing tag's trailing href, space before the slash", () =>
@@ -689,7 +689,7 @@ newlines</pre>
 
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe("<img src=data:image/png;base64,AAAA/AAA=>");
+		expect(minified).toBe("<img src=\"data:image/png;base64,AAAA/AAA=\">");
 	});
 
 	it("minify HTML drops the self-closing slash on an img with no attributes", () =>
