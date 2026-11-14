@@ -202,13 +202,14 @@ function _braceKind__(previous)
  * @description Classifies an identifier name by what it means for a following "/" or "{".
  * @param {string} word - The identifier name.
  * @param {Object} previous - Token before it.
+ * @param {boolean} lineBreak - Whether a line terminator lies between the previous token and the word.
  * @return {string} The token type.
  */
-function _wordType__(word, previous)
+function _wordType__(word, previous, lineBreak)
 {
 	if (previous.type === "punctuator" && (previous.value === "." || previous.value === "?.")) return "identifier";
 	if (STATEMENT_END_WORDS__.has(word)) return "statementEnd";
-	if (previous.type === "statementEnd" && previous.value !== "debugger") return "label";
+	if (previous.type === "statementEnd" && previous.value !== "debugger" && !lineBreak) return "label";
 	if (CONTEXTUAL_WORDS__.has(word)) return "contextual";
 	if (KEYWORDS__.has(word)) return "keyword";
 
@@ -424,7 +425,7 @@ function _scanWord__(state)
 	state.index = index;
 
 	return _emit__(state, {
-		type: _wordType__(word, state.previous),
+		type: _wordType__(word, state.previous, state.previous.type === "statementEnd" && _lineBreakBetween__(state, state.tokenEnd, start)),
 		value: word
 	});
 }

@@ -335,6 +335,16 @@ describe("HTML type and boolean attributes", () =>
 		expect(html("<svg><p><input/></svg>")).toBe("<svg><p><input></svg>");
 	});
 
+	it("diff r3: the foreign root's own attributes are foreign too (red on main)", () =>
+	{
+		// parse5 puts <svg> and <math> in their namespaces, so checked="checked" on them is a plain attribute value
+		expect(html("<svg checked=\"checked\"><rect width=\"10\" height=\"10\"/></svg>")).toBe("<svg checked=\"checked\"><rect width=\"10\" height=\"10\"/></svg>");
+		expect(html("<math disabled=\"disabled\"><mi>x</mi></math>")).toBe("<math disabled=\"disabled\"><mi>x</mi></math>");
+
+		// control: the same attribute on an HTML element still collapses
+		expect(html("<input checked=\"checked\"><svg width=\"10\"></svg>")).toBe("<input checked><svg width=\"10\"></svg>");
+	});
+
 	it("a stray \"/\" before \">\" keeps its space", () =>
 	{
 		expect(html("<br / >")).toBe("<br / >");

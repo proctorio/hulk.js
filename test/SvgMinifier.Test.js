@@ -18,9 +18,9 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 // (stripSvgComments__), and the vault is restored after it in one pass.
 // - "<?...?>", CDATA sections and the DOCTYPE (quoted literals and an internal subset with its declarations, comments
 //   and PIs) are vaulted verbatim.
-// - Comments: a comment is exposed only when the strip removes exactly that span ("<!", XML whitespace, "--", the first
-//   "--" after it, whitespace, ">": main's regex). A "<!--" the strip would not close ("<!-- a -- b -->", malformed XML)
-//   is vaulted to its first "-->".
+// - Comments: only an XML comment is exposed to the strip: "<!--", then a first "--" that is "-->". Anything else that
+//   main's regex would strip ("<! --", "-- >", "<!-- a -- b -->", "<!-- a --->") is not well-formed XML, and removing
+//   it could make a document XML rejects into one it accepts, so the rest of the document is kept as written (diff r3).
 // - A start tag is read with XML's attribute grammar (name, "=", a quoted value). Whitespace between the name and the
 //   attributes and between attributes becomes one space (S2: never nothing), "\s*=\s*" becomes "=", and the whitespace
 //   before ">" or "/>" gets what main's rules gave a lone run (two or more characters -> " ", a lone newline -> nothing).
@@ -448,7 +448,7 @@ describe("SVG output main already gets right is unchanged", () =>
 
 	it("comments, including the forms main's regex strips", () =>
 	{
-		expect(svg("<!-- a -->\n<svg>\n  <!-- b -->\n  <g/>\n  <! -- c -- \t>\n</svg><!---->")).toBe("<svg><g/></svg>");
+		expect(svg("<!-- a -->\n<svg>\n  <!-- b -->\n  <g/>\n</svg><!---->")).toBe("<svg><g/></svg>");
 		expect(svg("<svg><text>a<!--x-->b</text></svg>")).toBe("<svg><text>ab</text></svg>");
 	});
 
@@ -459,6 +459,25 @@ describe("SVG output main already gets right is unchanged", () =>
 		expect(svg("<svg><rect opacity=\"0.5\" fill-opacity=\"0.75\" stroke-width=\"-0.50\"/></svg>")).toBe("<svg><rect opacity=\".5\" fill-opacity=\".75\" stroke-width=\"-.5\"/></svg>");
 		expect(svg("<svg width=\"100\" height=\"200\"><circle r=\"10\"/></svg>")).toBe("<svg width=\"100\" height=\"200\"><circle r=\"10\"/></svg>");
 		expect(svg("<svg><path d=\"M0,0c-0.385,1.398-0.936,2.775-1.127,4.2 c0.381-1.599,0.877-3.179,1.124-4.798z\"/></svg>")).toBe("<svg><path d=\"M0,0c-.385,1.398-.936,2.775-1.127,4.2 c.381-1.599,.877-3.179,1.124-4.798z\"/></svg>");
+	});
+
+	it("diff r3: no number edits when the document's CSS can read attribute values (red on main)", () =>
+	{
+		// an attribute selector (or attr(), or a stylesheet the scanner cannot see) compares the attribute's text, and
+		// main also rewrote the selector's string; the payload keeps strings as written, so the attributes stay too
+		const root = "<svg xmlns=\"http://www.w3.org/2000/svg\">";
+		const inputs = [
+			`${root}<style>rect[width="1.0"]{fill:red}</style><rect width="1.0" height="1"/></svg>`,
+			`${root}<style>rect::after{content:attr(width)}</style><rect width="1.0"/></svg>`,
+			`${root}<style>@import "a.css";</style><rect width="1.0"/></svg>`,
+			`<?xml-stylesheet href="a.css"?>${root}<rect width="1.0"/></svg>`
+		];
+
+		for (const input of inputs) expect(svg(input), input).toBe(input);
+
+		// controls: a CDATA style with no selector on attributes, and a "[" with no style element
+		expect(svg(`${root}<style><![CDATA[rect{fill:red}]]></style><rect width="1.0"/></svg>`)).toBe(`${root}<style><![CDATA[rect{fill:red}]]></style><rect width="1"/></svg>`);
+		expect(svg(`${root}<rect width="1.0"/><text>[1]</text></svg>`)).toBe(`${root}<rect width="1"/><text>[1]</text></svg>`);
 	});
 
 	it("number shapes: exponents, signs, units, empty fractions, leading zeros", () =>
@@ -803,10 +822,17 @@ describe("SVG malformed markup: the rest stays as written", () =>
 		expect(svg("<svg>\n<g>\n  <h/><!doctype svg> <i>  </i> <!-- c -->")).toBe("<svg>\n<g>\n  <h/><!doctype svg> <i>  </i> <!-- c -->");
 	});
 
-	it("a comment the strip would not close is kept as written (red on main)", () =>
+	it("diff r3: a comment XML rejects keeps the rest as written (red on main)", () =>
 	{
-		expect(svg("<svg> <!--  a -- b  --> <g/> </svg>")).toBe("<svg><!--  a -- b  --><g/></svg>");
-		expect(svg("<svg> <!-- <!-- x --> <g/> </svg>")).toBe("<svg><!-- <!-- x --><g/></svg>");
+		const root = "<svg xmlns=\"http://www.w3.org/2000/svg\">";
+
+		for (const comment of ["<! --text-->", "<!--text-- >", "<! -- c -- \t>", "<!--  a -- b  -->", "<!-- <!-- x -->", "<!-- a --->"])
+		{
+			expect(svg(`${root} ${comment} <rect width="1.0"/> </svg>`), comment).toBe(`${root}${comment} <rect width="1.0"/> </svg>`);
+		}
+
+		// controls: well-formed comments, the empty one and one that holds "-" and "<!-" go as before
+		expect(svg(`${root} <!----> <!-- a-b <!- c --> <rect width="1.0"/> </svg>`)).toBe(`${root}<rect width="1"/></svg>`);
 	});
 });
 

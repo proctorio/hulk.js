@@ -402,6 +402,7 @@ function createState__(content, spans)
 		hexOk: false,
 		zeroOk: false,
 		candidates: [],
+		spaces: [],
 		runEnd: 0,
 		runEscaped: false
 	};
@@ -594,17 +595,58 @@ function resetSegment__(state)
 	state.hexOk = false;
 	state.zeroOk = false;
 	state.candidates = [];
+	state.spaces = [];
 	state.valuePending = false;
 }
 
 /**
- * @description Applies the hex and zero-unit edits recorded in a segment that ended as a declaration.
+ * @description Turns the whitespace and comments recorded after a ":" of the current segment into one space.
+ * @param {Object} state - Scanner state.
+ * @param {boolean} all - Whether runs recorded outside any block count too.
+ */
+function dropSpaces__(state, all)
+{
+	for (const [part, inBlock] of state.spaces) if (all || inBlock) state.parts[part] = " ";
+	state.spaces = [];
+}
+
+/**
+ * @description Applies the hex, zero-unit and colon-space edits recorded in a segment that ended as a declaration in a block.
  * @param {Object} state - Scanner state.
  */
 function commit__(state)
 {
 	for (const [part, text] of state.candidates) state.parts[part] = text;
 	state.candidates = [];
+	dropSpaces__(state, false);
+}
+
+/**
+ * @description After a ":", vaults the whitespace and comments up to the next token; a declaration turns them into a space.
+ * @param {Object} state - Scanner state, just after the ":".
+ */
+function colonSpace__(state)
+{
+	const { content } = state;
+	let end = state.index;
+
+	for (;;)
+	{
+		while (end < content.length && isWhitespaceCode__(content.charCodeAt(end))) end++;
+
+		const close = content.startsWith("/*", end) ? content.indexOf("*/", end + 2) : -1;
+
+		if (close === -1) break;
+		end = close + 2;
+	}
+
+	if (end === state.index) return;
+
+	flush__(state, state.index);
+	state.spaces.push([state.parts.length, state.block !== ""]);
+	state.parts.push(vault__(state.spans, content.slice(state.index, end)));
+	state.copied = end;
+	state.index = end;
 }
 
 /**
@@ -661,20 +703,18 @@ function preludeStart__(prelude)
 }
 
 /**
- * @description Classifies an at-rule block by its name; a name with an escape in it counts as @property.
+ * @description Reads an at-rule's name, escape markers included.
  * @param {string} prelude - Trimmed prelude text, escapes vaulted.
  * @param {number} start - Index after the "@".
- * @return {string} "P" for @property, "A" for any other at-rule.
+ * @return {string} The name as written.
  */
-function atRuleKind__(prelude, start)
+function atRuleName__(prelude, start)
 {
 	let end = start;
 
 	while (end < prelude.length && (isNameCode__(prelude.charCodeAt(end)) || prelude.charCodeAt(end) === 1)) end++;
 
-	const name = prelude.slice(start, end);
-
-	return asciiLower__(name) === "property" || name.includes(MARK__) ? "P" : "A";
+	return prelude.slice(start, end);
 }
 
 /**
@@ -695,9 +735,11 @@ function openBrace__(state)
 
 	const prelude = segmentText__(state);
 	const at = preludeStart__(prelude);
+	const name = prelude.startsWith("@", at) ? atRuleName__(prelude, at + 1) : null;
 	let kind = "S";
 
-	if (prelude.startsWith("@", at)) kind = atRuleKind__(prelude, at + 1);
+	if (name !== null) kind = asciiLower__(name) === "property" || name.includes(MARK__) ? "P" : "A";
+	if (name !== null && asciiLower__(name) === "media") dropSpaces__(state, true);
 	state.blocks.push(state.block);
 	state.block = kind;
 	push__(state, "B");
@@ -802,6 +844,7 @@ function punct__(state, code)
 		if (code === 0x5B) push__(state, "[");
 		state.index++;
 		state.last = state.content[state.index - 1];
+		if (code === 0x3A && state.verbatim === -1 && !state.valuePending) colonSpace__(state);
 	}
 }
 

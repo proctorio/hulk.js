@@ -258,7 +258,7 @@ function htmlStart__(state, tag)
 	else if (name === "plaintext") plaintext__(state, tag);
 	else
 	{
-		emitTag__(state, tag, true);
+		emitTag__(state, tag, !FOREIGN_ROOTS__.has(name));
 
 		if (FOREIGN_ROOTS__.has(name) && !tag.selfClosing) push__(state, tag);
 

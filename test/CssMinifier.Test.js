@@ -254,6 +254,29 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 		]);
 	});
 
+	it("diff r3: whitespace after a \":\" outside a declaration stays, so an invalid selector stays invalid (red on main)", () =>
+	{
+		// a selector cannot hold whitespace after ":" or "::"; removing it would turn a rule (or a @supports
+		// condition) the browser drops into one it applies. Only a declaration in a block, or an @media prelude, loses it.
+		expectCases([
+			["@supports selector(: is(.item)){.item{color:red}}", "@supports selector(: is(.item)){.item{color:red}}"],
+			["@supports selector(:\nis(.item)){.item{color:red}}", "@supports selector(:\nis(.item)){.item{color:red}}"],
+			[".a: hover{color:red}", ".a: hover{color:red}"],
+			[".a : hover{color:red}", ".a : hover{color:red}"],
+			[".a:/* c */hover{color:red}", ".a:/* c */hover{color:red}"],
+			[".a::\nbefore{color:red}", ".a::\nbefore{color:red}"],
+			["@page : first{margin:1cm}", "@page : first{margin:1cm}"],
+			[".x{&: hover{color:red} b:c}", ".x{&: hover{color:red} b:c}"],
+			["@supports (display: grid){a{b:c}}", "@supports (display: grid){a{b:c}}"],
+			["@import url(x) screen and (min-width: 1px);", "@import url(x) screen and (min-width: 1px);"],
+
+			// controls: declarations and @media preludes lose it as on main, a custom property's lone space stays
+			["@media (min-width: 768px) and (hover:\nhover){a{color : red ;margin: 0px}}", "@media (min-width:768px) and (hover:hover){a{color:red ;margin:0}}"],
+			["a{color: red;margin:\n0px;--x: ;width: /* c */ 1px}", "a{color:red;margin:0;--x: ;width:1px}"],
+			["@MEDIA (min-width: 1px){a{b:c}}", "@MEDIA (min-width:1px){a{b:c}}"]
+		]);
+	});
+
 	it("r3, r15: the leading zero goes only from a whole number token", () =>
 	{
 		// positive control: whole number tokens still lose it
@@ -692,6 +715,9 @@ describe("CSS scan stays linear on long runs of each loop's worst case", { timeo
 		["open braces", "{", n => [`${PREFIX__}${"{".repeat(n)}`, `${MINIFIED_PREFIX__}${"{".repeat(n)}`]],
 		["close braces", "}", n => [`${PREFIX__}${"}".repeat(n)}`, `${MINIFIED_PREFIX__}${"}".repeat(n)}`]],
 		["colons in a prelude", "a:", n => [`${PREFIX__}${"a:".repeat(n)}{b:c}`, `${MINIFIED_PREFIX__}${"a:".repeat(n)}{b:c}`]],
+		["colons with spaces in a prelude", "a: ", n => [`${PREFIX__}${"a: ".repeat(n)}{b:c}`, `${MINIFIED_PREFIX__}${"a: ".repeat(n)}{b:c}`]],
+		["comments after a colon", " /**/", n => [`${PREFIX__}b{c:${" /**/".repeat(n)} d}`, `${MINIFIED_PREFIX__}b{c:d}`]],
+		["unterminated comments after colons", ":/*", n => [`${PREFIX__}${":/*".repeat(n)}`, `${MINIFIED_PREFIX__}${":/*".repeat(n)}`]],
 		["a long custom-property value", " y", n => [`${PREFIX__}b{--x:${" y".repeat(n)}}`, `${MINIFIED_PREFIX__}b{--x:y${" y".repeat(n - 1)}}`]],
 		["many custom properties", "--x:y;", n => [`${PREFIX__}b{${"--x:y;".repeat(n)}}`, `${MINIFIED_PREFIX__}b{${"--x:y;".repeat(n - 1)}--x:y}`]],
 		["many rules", "a{b:c}\n", n => [`${PREFIX__}${"a{b:c}\n".repeat(n)}`, `${MINIFIED_PREFIX__}${"a{b:c}".repeat(n)}`]],

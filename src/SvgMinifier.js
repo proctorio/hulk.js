@@ -13,6 +13,8 @@ const NAME_START_NOT__ = "-.0123456789";
 
 const NAME__ = new RegExp(`[^\\t\\n\\r "'&/<=>?!${MARK__}]+`, "uy");
 const DOCTYPE__ = /<!doctype/iu;
+const STYLE_ELEMENT__ = /[<:]style[\t\n\r />]|<\?xml-stylesheet/u;
+const ATTRIBUTE_READ__ = /(?<!<!\[CDATA)\[(?!CDATA\[)|@import|attr\(|<\?xml-stylesheet/u;
 const ASCII_UPPER__ = /[A-Z]+/gu;
 const PAYLOAD_UNSAFE__ = /[&<]|\]\]>/u;
 
@@ -105,30 +107,21 @@ function vaultUntil__(scan, start, terminator, from)
 }
 
 /**
- * @description Scans a comment: exposed for the comment strip when it removes exactly this span, else vaulted.
+ * @description Scans a comment, exposed for the comment strip; one whose first "--" is not "-->" is not XML.
  * @param {Object} scan - Scanner state.
- * @param {number} start - Index of "<!".
- * @param {number} open - Index of the "--" after "<!" and any whitespace.
- * @return {number} Index after the comment, or -1 when its end is unknown.
+ * @param {number} start - Index of "<!--".
+ * @return {number} Index after the comment, or -1 when it is not a well-formed comment.
  */
-function scanComment__(scan, start, open)
+function scanComment__(scan, start)
 {
 	const { content } = scan;
-	const close = content.indexOf("--", open + 2);
+	const close = content.indexOf("--", start + 4);
 
-	if (close !== -1)
-	{
-		const end = skipSpace__(content, close + 2);
+	if (close === -1 || content[close + 2] !== ">") return -1;
 
-		if (content[end] === ">")
-		{
-			emitExposed__(scan, content.slice(start, end + 1));
+	emitExposed__(scan, content.slice(start, close + 3));
 
-			return end + 1;
-		}
-	}
-
-	return open === start + 2 ? vaultUntil__(scan, start, "-->", start + 4) : -1;
+	return close + 3;
 }
 
 /**
@@ -140,9 +133,8 @@ function scanComment__(scan, start, open)
 function scanBang__(scan, start)
 {
 	const { content } = scan;
-	const open = skipSpace__(content, start + 2);
 
-	if (content.startsWith("--", open)) return scanComment__(scan, start, open);
+	if (content.startsWith("--", start + 2)) return scanComment__(scan, start);
 	if (content.startsWith("[CDATA[", start + 2)) return vaultUntil__(scan, start, "]]>", start + 9);
 	if (!content.startsWith("DOCTYPE", start + 2)) return -1;
 
@@ -390,7 +382,7 @@ function scanStartTag__(scan, start)
 	if (tag === null) return -1;
 
 	const frame = openFrame__(scan, name[0], tag.attributes);
-	const numeric = frame.svg && !scan.conservative;
+	const numeric = frame.svg && scan.numbers;
 
 	scan.out.push("<", name[0]);
 
@@ -492,7 +484,8 @@ function minifySvg__(content)
 		out: [],
 		top: ROOT__,
 		prefixes: new Map(),
-		conservative: DOCTYPE__.test(content)
+		conservative: DOCTYPE__.test(content),
+		numbers: !DOCTYPE__.test(content) && !(STYLE_ELEMENT__.test(content) && ATTRIBUTE_READ__.test(content))
 	};
 	let at = 0;
 
