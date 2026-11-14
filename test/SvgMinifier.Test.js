@@ -847,7 +847,7 @@ describe("SVG malformed markup: the rest stays as written", () =>
 	{
 		const root = "<svg xmlns=\"http://www.w3.org/2000/svg\">";
 
-		for (const char of ["\u0000", "\u0008", "\u000B", "\u000C", "\u001F", "\uFFFE", "\uFFFF", "\uD800", "\uDC00", "a\uD800"])
+		for (const char of ["\u0000", "\u0008", "\u000B", "\u000C", "\u001F", "\uFFFE", "\uFFFF", "\uD800", "\uDC00", "a\uD800", "\uD800\uD801", "\uDBFF\uE000"])
 		{
 			const comment = `<!-- a${char}b -->`;
 
