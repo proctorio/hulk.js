@@ -369,6 +369,41 @@ describe("an ambiguous file gets no edit but the final trim", () =>
 		}
 	});
 
+	it("minify JS edits after each certain block or expression brace and each control head (positive control, green on main)", () =>
+	{
+		// each line pins one entry of the brace-kind and control-head lists: without it, the "/" after the "}"
+		// or ")" is uncertain (refused) or read as division (the quote then opens a string that meets a newline)
+		const certain = [
+			"if (a) {} else {}\n/x/.test(s);",
+			"try {} finally {}\n/x/.test(s);",
+			"switch (a) { case {} / 2: }",
+			"x = delete {} / 2;",
+			"x = a in {} / 2;",
+			"x = a instanceof {} / 2;",
+			"x = new {} / 2;",
+			"function f() { return {} / 2; }",
+			"function f() { throw {} / 2; }",
+			"x = typeof {} / 2;",
+			"x = void {} / 2;",
+			"x = 1;\n{}\n/'/.test(s);",
+			"{{}\n/'/.test(s);}",
+			"x = () => {}\n/'/.test(s);",
+			"{}{}\n/x/.test(s);",
+			"{}\n/x/.test(s);",
+			"for (;;) {}\n/x/.test(s);",
+			"while (a) {}\n/x/.test(s);",
+			"with (a) {}\n/x/.test(s);",
+			"if (a) /'/.test(s);",
+			"while (a) /'/.test(s);",
+			"with (a) /'/.test(s);"
+		];
+
+		for (const input of certain)
+		{
+			expect(js(`${input}${tail}`)).toBe(`${input}\nfoo();`);
+		}
+	});
+
 	it("minify JS refuses a slash it cannot classify", () =>
 	{
 		const uncertain = [
@@ -430,6 +465,7 @@ describe("an ambiguous file gets no edit but the final trim", () =>
 			"x = `" + OPEN_SLOT__ + "a)`",
 			"x = /a",
 			"x = /a\\\n/;",
+			"x = /a\n/;",
 			"x = /[/]",
 			"f(a];",
 			"f(a;",
@@ -483,6 +519,7 @@ describe("main already does this right (green on main)", () =>
 			["/*\n * a\n */\n\n// b\nexport { a };\n", "export { a };"],
 			["\uFEFFvar bom = 1;", "var bom = 1;"],
 			["x = `a`;\n// c\n", "x = `a`;"],
+			["x = 'a'  \ny = `b`\t\nz = /c/ \n", "x = 'a'\ny = `b`\nz = /c/"],
 			["  \n\t\n", ""],
 			["", ""]
 		];

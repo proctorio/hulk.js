@@ -611,6 +611,16 @@ describe("SVG character data", () =>
 		expect(svg(input)).toBe(input);
 	});
 
+	it("whitespace-only text inside each text element stays, under any prefix (red on main)", () =>
+	{
+		// positive control: the same whitespace between g elements goes
+		const input = `${ROOT__}<g><g/> <g/></g><tspan><tspan>a</tspan> <tspan>b</tspan></tspan><textPath><tspan>a</tspan> <tspan>b</tspan></textPath><title><a/> <a/></title><desc><a/> <a/></desc></svg>`;
+		const prefixed = `<s:svg xmlns:s="${SVG_NS__}"><s:text><s:tspan>a</s:tspan> <s:tspan>b</s:tspan></s:text></s:svg>`;
+
+		expect(svg(input)).toBe(`${ROOT__}<g><g/><g/></g><tspan><tspan>a</tspan> <tspan>b</tspan></tspan><textPath><tspan>a</tspan> <tspan>b</tspan></textPath><title><a/> <a/></title><desc><a/> <a/></desc></svg>`);
+		expect(svg(prefixed)).toBe(prefixed);
+	});
+
 	it("text outside the text elements is kept as written; whitespace-only text between markup goes (red on main)", () =>
 	{
 		const input = `${ROOT__}\n<metadata>\n  <rdf:RDF xmlns:rdf="urn:rdf">\n    <dc:title xmlns:dc="urn:dc">My  icon\n v2.0 a = b</dc:title>\n  </rdf:RDF>\n</metadata>\n<g>\u00A0</g><g>\u00A0 \n</g></svg>`;

@@ -80,7 +80,8 @@ describe("CSS plan cases (WI 47101), each red on main", () =>
 			["a{color:#aabbcc}", "a{color:#abc}"],
 			["#ffeedd{color:red}", "#ffeedd{color:red}"],
 			["#aabbcc-x{color:red}", "#aabbcc-x{color:red}"],
-			["a{fill:url(#aabbcc)}", "a{fill:url(#aabbcc)}"]
+			["a{fill:url(#aabbcc)}", "a{fill:url(#aabbcc)}"],
+			["a{&:hover #ffeedd{color:#aabbcc}}", "a{&:hover #ffeedd{color:#abc}}"]
 		]);
 	});
 
@@ -100,7 +101,8 @@ describe("CSS plan cases (WI 47101), each red on main", () =>
 			["a{content:\"a   b /* x */ c\"}", "a{content:\"a   b /* x */ c\"}"],
 			["a{content:'/* x */'}", "a{content:'/* x */'}"],
 			["a{content:\"x; y\"}", "a{content:\"x; y\"}"],
-			["@font-face{font-family:\"a  b\"}", "@font-face{font-family:\"a  b\"}"]
+			["@font-face{font-family:\"a  b\"}", "@font-face{font-family:\"a  b\"}"],
+			["a{content:\"a\\\r\n  b  c\"}", "a{content:\"a\\\r\n  b  c\"}"]
 		]);
 	});
 
@@ -126,9 +128,12 @@ describe("CSS plan cases (WI 47101), each red on main", () =>
 
 	it("C4: calc() keeps its zero units", () =>
 	{
+		// positive control: a zero unit outside brackets, followed by a space, is stripped
 		expectCases([
+			["a{width:0px }", "a{width:0}"],
 			["a{width:calc(10px + 0px)}", "a{width:calc(10px + 0px)}"],
-			["a{width:calc(100% - 0px)}", "a{width:calc(100% - 0px)}"]
+			["a{width:calc(100% - 0px)}", "a{width:calc(100% - 0px)}"],
+			["a{width:calc(100% - 0px - 2px)}", "a{width:calc(100% - 0px - 2px)}"]
 		]);
 	});
 
@@ -244,14 +249,25 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 
 	it("r3: NBSP is a name char, not whitespace", () =>
 	{
-		expectCases([["a{animation:x\u00A0}", "a{animation:x\u00A0}"]]);
+		// positive control: a space after "{" goes, and url( + a space + a string is a function with a string
+		expectCases([
+			["a{ b:c}", "a{b:c}"],
+			["a{b:url( 'a)b' c  d)}", "a{b:url( 'a)b' c d)}"],
+			["a{animation:x\u00A0}", "a{animation:x\u00A0}"],
+			["a{\u00A0b:c}", "a{\u00A0b:c}"],
+			["a{b:url(\u00A0'a)b' c  d)}", "a{b:url(\u00A0'a)b' c  d)}"]
+		]);
 	});
 
 	it("r3: element() and -moz-element() keep the id they reference", () =>
 	{
+		// positive control: a hash inside another function still shortens
 		expectCases([
+			["a{background:linear-gradient(#aabbcc,red)}", "a{background:linear-gradient(#abc,red)}"],
 			["a{background:-moz-element(#aabbcc)}", "a{background:-moz-element(#aabbcc)}"],
-			["a{background:element(#aabbcc)}", "a{background:element(#aabbcc)}"]
+			["a{background:element(#aabbcc)}", "a{background:element(#aabbcc)}"],
+			["a{background:element((#aabbcc))}", "a{background:element((#aabbcc))}"],
+			["a{background:\\65lement(#aabbcc)}", "a{background:\\65lement(#aabbcc)}"]
 		]);
 	});
 
@@ -322,6 +338,15 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 			["p{opacity:if(style(--keep:{1;}):0;else:1)}", "p{opacity:if(style(--keep:{1;}):0;else:1)}"]
 		]);
 	});
+
+	it("r15: a {} block inside a function's brackets stays as written", () =>
+	{
+		// positive control: the same tokens without the {} block are minified
+		expectCases([
+			["a{b:--f(c  ;  d)}", "a{b:--f(c ;d)}"],
+			["a{b:--f({c  ;  d})}", "a{b:--f({c  ;  d})}"]
+		]);
+	});
 });
 
 describe("CSS url( is a url token only at the start of an ident, each red on main", () =>
@@ -370,6 +395,15 @@ describe("CSS url( is a url token only at the start of an ident, each red on mai
 		// a bad url token (its body holds a quote) up to the first ")": what follows is code, and its 0.5 a number
 		expectCases([["a{b:\\41 \nurl(a \"b)0.5\")}", "a{b:\\41  url(a \"b).5\")}"]]);
 	});
+
+	it("a backslash before a newline escapes nothing, so the url( after the newline is a url token", () =>
+	{
+		// positive control: after an escape, url( is part of the function name and its body is code
+		expectCases([
+			["a{b:\\41url(x  y)}", "a{b:\\41url(x y)}"],
+			["a{b:\\\nurl(x  y)}", "a{b:\\\nurl(x  y)}"]
+		]);
+	});
 });
 
 describe("CSS custom-property values stay as written (deviation from PLAN.md, see the header)", () =>
@@ -404,6 +438,17 @@ describe("CSS custom-property values stay as written (deviation from PLAN.md, se
 			["a{--x:0.5  1px", "a{--x:0.5  1px"],
 			["a{--x:(0.5  1px", "a{--x:(0.5  1px"],
 			["a{--x: a\n", "a{--x:a"]
+		]);
+	});
+
+	it("a custom property's value ends only at a ; or } outside its brackets", () =>
+	{
+		// positive control: under a plain property the same value is minified
+		expectCases([
+			["a{x:(a;b  c)}", "a{x:(a;b c)}"],
+			["a{x:{a}  b  c}", "a{x:{a} b c}"],
+			["a{--x:(a;b  c)}", "a{--x:(a;b  c)}"],
+			["a{--x:{a}  b  c}", "a{--x:{a}  b  c}"]
 		]);
 	});
 
@@ -448,6 +493,15 @@ describe("CSS conservative choices that cost bytes, each red on main", () =>
 			["a{color:#aabbcc /* x */}", "a{color:#abc}"],
 			["a{color:#aabbcc/* x */}", "a{color:#aabbcc}"],
 			["a{margin:0px/* x */}", "a{margin:0px}"]
+		]);
+	});
+
+	it("a hash right before a backslash keeps its digits, even where the backslash escapes nothing", () =>
+	{
+		// positive control: before a plain newline it is edited
+		expectCases([
+			["a{color:#aabbcc\n}", "a{color:#abc}"],
+			["a{color:#aabbcc\\\n}", "a{color:#aabbcc\\\n}"]
 		]);
 	});
 });
@@ -568,6 +622,12 @@ describe("CSS markers (U+0001) in the input", () =>
 			["a{--x:\u0001}", "a{--x:\u0001}"],
 			["\u0001{\u0001}\u0001;\u0001:\u0001,\u0001 \u0001!\u0001", "\u0001{\u0001}\u0001;\u0001:\u0001,\u0001 \u0001!\u0001"]
 		]);
+	});
+
+	it("control (green on main, which has no vault): U+0001, a digit and U+0001 in the input are not read as a marker", () =>
+	{
+		// positive control: the color in the same input still shortens
+		expectCases([["a{b:\"x\";color:#aabbcc}\u00010\u0001", "a{b:\"x\";color:#abc}\u00010\u0001"]]);
 	});
 
 	it("control (green on main, which has no vault): many markers next to vaulted strings and edited numbers", () =>
