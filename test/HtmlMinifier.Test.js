@@ -663,6 +663,223 @@ describe("HTML U+0001 and many markers", () =>
 	});
 });
 
+describe("HTML guards pinned by the mutation pass", () =>
+{
+	// Each test fails when the guard it names is disabled, inverted or widened to main's behaviour; the rest of this
+	// file left those mutants alive.
+
+	it("an attribute name can start with \"=\" (red on main)", () =>
+	{
+		expect(html("<p = x >")).toBe("<p = x>");
+	});
+
+	it("a tag name runs to HTML whitespace only: \"<svg\\u00A0x>\" opens no foreign content (red on main)", () =>
+	{
+		// positive control: in foreign content a textarea is markup and its text collapses
+		expect(html("<svg x><textarea> a  b </textarea>")).toBe("<svg x><textarea> a b </textarea>");
+		expect(html("<svg\u00A0x><textarea> a  b </textarea>")).toBe("<svg\u00A0x><textarea> a  b </textarea>");
+	});
+
+	it("an unquoted value runs past NBSP and quotes, so a \"/\" at its end is no void slash (red on main)", () =>
+	{
+		// positive control: the void slash goes after whitespace
+		expect(html("<img src=x />")).toBe("<img src=x>");
+		expect(html("<img src=x\u00A0/>")).toBe("<img src=x\u00A0/>");
+		expect(html("<img alt=a\"/>")).toBe("<img alt=a\"/>");
+		expect(html("<img alt=a'/>")).toBe("<img alt=a'/>");
+	});
+
+	it("names are lowercased for A-Z only: a Kelvin sign is not \"k\" (red on main)", () =>
+	{
+		// positive control
+		expect(html("<input checked=\"checked\">")).toBe("<input checked>");
+		expect(html("<input chec\u212Aed=\"checked\">")).toBe("<input chec\u212Aed=\"checked\">");
+	});
+
+	it("\"<\" + a non-ASCII letter is text (red on main)", () =>
+	{
+		// positive control: a tag loses the space before ">"
+		expect(html("<e >")).toBe("<e>");
+		expect(html("<\u00E9 >")).toBe("<\u00E9 >");
+	});
+
+	it("font with face or size breaks out of foreign content too (red on main)", () =>
+	{
+		expect(html("<svg><font face=x><textarea> a  b </textarea>")).toBe("<svg><font face=x><textarea> a  b </textarea>");
+		expect(html("<svg><font size=1><textarea> a  b </textarea>")).toBe("<svg><font size=1><textarea> a  b </textarea>");
+	});
+
+	it("main already does this right: \"/>\" goes only on a void name not followed by a word character", () =>
+	{
+		expect(html("<img/>")).toBe("<img>");
+		expect(html("<imgx/>")).toBe("<imgx/>");
+	});
+
+	it("main already does this right: an unquoted default type stays", () =>
+	{
+		expect(html("<script type=\"text/javascript\">x</script>")).toBe("<script>x</script>");
+		expect(html("<script type=text/javascript>x</script>")).toBe("<script type=text/javascript>x</script>");
+	});
+
+	it("the default type stays when the next attribute is glued to it (red on main)", () =>
+	{
+		expect(html("<script type=\"text/javascript\"src=\"a.js\"></script>")).toBe("<script type=\"text/javascript\"src=a.js></script>");
+	});
+
+	it("main already does this right: only a quoted, whitespace-led boolean collapses", () =>
+	{
+		expect(html("<input checked=\"checked\">")).toBe("<input checked>");
+		expect(html("<input checked=checked>")).toBe("<input checked=checked>");
+		expect(html("<input value=\"x\"checked=\"checked\">")).toBe("<input value=\"x\"checked=\"checked\">");
+	});
+
+	it("a boolean stays when the next attribute is glued to it (red on main)", () =>
+	{
+		expect(html("<input checked=\"checked\" id=\"x\">")).toBe("<input checked id=\"x\">");
+		expect(html("<input checked=\"checked\"id=\"x\">")).toBe("<input checked=\"checked\"id=\"x\">");
+	});
+
+	it("main already does this right: href/src keep their quotes with whitespace around \"=\" or an empty value", () =>
+	{
+		expect(html("<a href=\"/x\">x</a>")).toBe("<a href=/x>x</a>");
+		expect(html("<a href =\"/x\">x</a>")).toBe("<a href=\"/x\">x</a>");
+		expect(html("<a href= \"/x\">x</a>")).toBe("<a href=\"/x\">x</a>");
+		expect(html("<a href=\"\">x</a>")).toBe("<a href=\"\">x</a>");
+	});
+
+	it("main already does this right: U+0001 in a tag name is not read as a marker", () =>
+	{
+		expect(html("<p\u00010\u0001 >x</p>")).toBe("<p\u00010\u0001>x</p>");
+	});
+
+	it("main already does this right: a single tab in text becomes a space", () =>
+	{
+		expect(html("<p>a\tb</p>")).toBe("<p>a b</p>");
+	});
+
+	it("\"/\" after the end tag name ends RCDATA (red on main)", () =>
+	{
+		expect(html("<title>a  b</title/><p>c  d</p>")).toBe("<title>a  b</title/><p>c d</p>");
+	});
+
+	it("every JavaScript MIME type is minified (red on main)", () =>
+	{
+		expectChangeable("//c\nfoo()", "js");
+		expect(html("<script type=\"application/javascript\">//c\nfoo()</script>")).toBe("<script type=\"application/javascript\">foo()</script>");
+		expect(html("<script type=\"text/ecmascript\">//c\nfoo()</script>")).toBe("<script type=\"text/ecmascript\">foo()</script>");
+		expect(html("<script type=\"application/ecmascript\">//c\nfoo()</script>")).toBe("<script type=\"application/ecmascript\">foo()</script>");
+	});
+
+	it("main already does this right: \"<!-->\" in a script returns to script data", () =>
+	{
+		expect(html("<script><!--><script></script>  x</script>")).toBe("<script><!--><script></script> x</script>");
+	});
+
+	it("\"-->\" in a script returns to script data, so a later <script> does not double-escape (red on main)", () =>
+	{
+		expect(html("<script><!-- --><script></script>  x</script>")).toBe("<script><!-- --><script></script> x</script>");
+	});
+
+	it("a style with two type attributes stays verbatim (red on main)", () =>
+	{
+		expectKept("<style type=\"text/css\" type=\"text/less\">a { b: c }</style>", "a { b: c }", "css");
+	});
+
+	it("a style type is ASCII case-insensitive (red on main)", () =>
+	{
+		expect(html("<style id=a type=\"TEXT/CSS\">a { b: c }</style>")).toBe("<style id=a type=\"TEXT/CSS\">a{b:c}</style>");
+	});
+
+	it("a script type is ASCII case-insensitive and trimmed of ASCII whitespace only (red on main)", () =>
+	{
+		expect(html("<script id=a type=\"TEXT/JAVASCRIPT\">//c\nfoo()</script>")).toBe("<script id=a type=\"TEXT/JAVASCRIPT\">foo()</script>");
+		expect(html("<script type=\"MODULE\">//c\nfoo()</script>")).toBe("<script type=\"MODULE\">foo()</script>");
+		expectKept("<script type=\"\u00A0text/javascript\">//c\nfoo()</script>", "//c\nfoo()", "js");
+	});
+
+	it("a script holding \"<!--\" only inside a comment stays verbatim (red on main)", () =>
+	{
+		expectKept("<script>// <!--\nfoo()</script>", "// <!--\nfoo()", "js");
+	});
+
+	it("the \"</script\" post-check is ASCII case-insensitive (red on main)", () =>
+	{
+		const payload = "const s=\"</SCRIPT\u00A0>\";\n// c\nfoo();";
+
+		expectChangeable(payload, "js");
+		expect(js(payload)).toContain("</SCRIPT");
+		expect(html(`<script>${payload}</script>`)).toBe("<script>const s=\"</SCRIPT\u00A0>\";\n// c\nfoo();</script>");
+	});
+
+	it("<svg/> opens no foreign content (red on main)", () =>
+	{
+		// positive control: an open svg makes the textarea markup
+		expect(html("<svg><textarea> a  b</textarea>")).toBe("<svg><textarea> a b</textarea>");
+		expect(html("<svg/><textarea> a  b</textarea>")).toBe("<svg/><textarea> a  b</textarea>");
+	});
+
+	it("main already does this right: a self-closed svg title opens no integration point", () =>
+	{
+		expect(html("<svg><title/>\n<path d=\"M0 0\"/>\n</svg>")).toBe("<svg><title/><path d=\"M0 0\"/></svg>");
+	});
+
+	it("main already does this right: an end tag pops only to its nearest match", () =>
+	{
+		expect(html("<svg><g><g></g></g></svg><p>a  b</p>")).toBe("<svg><g><g></g></g></svg><p>a b</p>");
+	});
+
+	it("main already does this right: <pre> breaks out of svg and is a preserved block", () =>
+	{
+		expect(html("<svg><pre> a  b</pre></svg>")).toBe("<svg><pre> a  b</pre></svg>");
+	});
+
+	it("main already does this right: \"<![CDATA[\" in HTML content is a bogus comment", () =>
+	{
+		expect(html("<p><![CDATA[a  b]]></p>")).toBe("<p><![CDATA[a b]]></p>");
+	});
+
+	it("a start tag inside a MathML integration point latches (red on main)", () =>
+	{
+		expect(html("<p>a</p>\n<math><mi><b>x</b>\n\n<!--c--></mi></math>")).toBe("<p>a</p><math><mi><b>x</b>\n\n<!--c--></mi></math>");
+		expect(html("<p>a</p>\n<math><mo><b>x</b>\n\n<!--c--></mo></math>")).toBe("<p>a</p><math><mo><b>x</b>\n\n<!--c--></mo></math>");
+		expect(html("<p>a</p>\n<math><mn><b>x</b>\n\n<!--c--></mn></math>")).toBe("<p>a</p><math><mn><b>x</b>\n\n<!--c--></mn></math>");
+		expect(html("<p>a</p>\n<math><ms><b>x</b>\n\n<!--c--></ms></math>")).toBe("<p>a</p><math><ms><b>x</b>\n\n<!--c--></ms></math>");
+		expect(html("<p>a</p>\n<math><mtext><b>x</b>\n\n<!--c--></mtext></math>")).toBe("<p>a</p><math><mtext><b>x</b>\n\n<!--c--></mtext></math>");
+		expect(html("<p>a</p>\n<math><annotation-xml><b>x</b>\n\n<!--c--></annotation-xml></math>")).toBe("<p>a</p><math><annotation-xml><b>x</b>\n\n<!--c--></annotation-xml></math>");
+	});
+
+	it("main already does this right: </br> and </p> leave foreign content, so the HTML after them is minified", () =>
+	{
+		expect(html("<svg></br>\n<p>a  b</p>")).toBe("<svg></br><p>a b</p>");
+		expect(html("<svg></p>\n<p>a  b</p>")).toBe("<svg></p><p>a b</p>");
+	});
+
+	it("</p> inside an integration point latches (red on main)", () =>
+	{
+		expect(html("<svg><title></p></title></svg>\n<p>a  b</p>")).toBe("<svg><title></p></title></svg>\n<p>a  b</p>");
+	});
+
+	it("\"<!--->\" ends a comment, so the textarea after it is real (red on main)", () =>
+	{
+		expect(html("<!---><textarea> a  b</textarea>")).toBe("<!---><textarea> a  b</textarea>");
+	});
+
+	it("a comment ends at the first of \"--!>\" and \"-->\" (red on main)", () =>
+	{
+		expect(html("<!--a--!><textarea> -->  x</textarea>")).toBe("<!--a--!><textarea> -->  x</textarea>");
+	});
+
+	it("main already does this right: an unterminated comment runs to the end of the document", () =>
+	{
+		expect(html("<!--<textarea> a  b</textarea>")).toBe("<!--<textarea> a b</textarea>");
+	});
+
+	it("main already does this right: \"</\" + a non-letter starts a bogus comment", () =>
+	{
+		expectKept("</ <style>a { b }</style>", "a { b }", "css");
+	});
+});
+
 describe("HTML stays linear (each input over 500k characters, with one above U+00FF)", { timeout: TIMEOUT_MS__ }, () =>
 {
 	// [name, input, expected]
