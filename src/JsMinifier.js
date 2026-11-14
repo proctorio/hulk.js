@@ -25,7 +25,7 @@ function _trimLineEnds__(content, protectedSpans)
 }
 
 /**
- * @description Minifies JS content.
+ * @description Minifies JS content; one that would start with "#!" only once minified stays as written (no hashbang then).
  * @param {string} content - Original JS content.
  * @return {string} Minified output of the given JS content.
  */
@@ -34,10 +34,9 @@ function minifyJs__(content)
 	const scan = scanJs__(content);
 	const stripped = scan === null ? null : stripJsComments__(content, scan.commentStarts);
 	const rescan = stripped === null ? null : scanJs__(stripped);
+	const minified = rescan === null ? content.trim() : _trimLineEnds__(stripped, rescan.protectedSpans).trim();
 
-	if (rescan === null) return content.trim();
-
-	return _trimLineEnds__(stripped, rescan.protectedSpans).trim();
+	return minified.startsWith("#!") && !content.startsWith("#!") ? content : minified;
 }
 
 export { minifyJs__ };

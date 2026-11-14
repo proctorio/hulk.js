@@ -63,6 +63,7 @@ const SLASH_AFTER_BRACE__ = new Map([
 	["expression", false],
 	["uncertain", null]
 ]);
+const SPECIFIER_WORDS__ = new Set(["from", "import"]);
 const OPERAND_TYPES__ = new Set(["closeBracket", "closeParen", "identifier", "number", "regex", "string", "template"]);
 const START__ = { type: "start" };
 const NO_OPENER__ = { opener: "" };
@@ -172,6 +173,8 @@ function _slashStartsRegex__(previous)
 			return previous.control;
 		case "closeBrace":
 			return SLASH_AFTER_BRACE__.get(previous.kind);
+		case "string":
+			return previous.specifier ? null : false;
 		default:
 			return false;
 	}
@@ -282,7 +285,10 @@ function _scanString__(state, quote)
 			state.index = index + 1;
 			_protect__(state, start, state.index);
 
-			return _emit__(state, { type: "string" });
+			return _emit__(state, {
+				type: "string",
+				specifier: SPECIFIER_WORDS__.has(state.previous.value)
+			});
 		}
 
 		if (code === 10 || code === 13) return false;

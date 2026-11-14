@@ -33,7 +33,8 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 // or one of the keywords return typeof case do else in new delete void throw instanceof (not after "."
 // or "?.", where they are property names); after ")" only when its "(" followed if, while, for, with or
 // "for await"; after "}" only when its "{" opened a certain block. After an identifier, number, string,
-// template, regex, "]" or postfix ++/-- it is division.
+// template, regex, "]" or postfix ++/-- it is division, except after a string right after from or import (a
+// module specifier, where ASI may end the declaration): that refuses.
 //
 // A "{" is a certain block at the start, after ";" "{" "}" "=>", after else try finally do catch, or after
 // the ")" of if for while with catch switch. It is a certain expression after any other punctuator (an
@@ -306,6 +307,12 @@ describe("reviewer probes of rounds 1-5 and 15, and the prototype's cases", () =
 		["diff r5 (an object after export default is an expression)", "export default {a: 1}\n/ 2;\n// drop\n", "export default {a: 1}\n/ 2;"],
 		["diff r5 (control: a property named default is still an identifier, its slash division)", "const o = {default: 4};\no.default / 2;\n// c\n", "const o = {default: 4};\no.default / 2;"],
 		["diff r5 (control: default in a switch)", "switch (1) { default: /`/.test(\"\"); }\nconst t = `a\n// keep\nb`;\n/`/.test(\"\");\n// drop\n", "switch (1) { default: /`/.test(\"\"); }\nconst t = `a\n// keep\nb`;\n/`/.test(\"\");"],
+		["diff r6 (refused: a slash after a module specifier)", "import \"text\"\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "import \"text\"\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r6 (refused: a slash after a module specifier)", "import { a } from \"text\"\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "import { a } from \"text\"\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r6 (refused: a slash after a module specifier)", "export * from \"text\"\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop\n", "export * from \"text\"\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\nconsole.log(t);\n/`/.test(\"\");\n// drop"],
+		["diff r6 (control: a string in an expression is still divided)", "x = \"a\"\n/ 2;\n// c\n", "x = \"a\"\n/ 2;"],
+		["diff r6 (control: from as a name is still divided)", "let from = 4;\nfrom / 2;\n// c\n", "let from = 4;\nfrom / 2;"],
+		["diff r6 (control: a module specifier then a semicolon)", "import \"text\";\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;\n// drop\n", "import \"text\";\n/`/.test(\"\");\nconst t = `a\n// keep\nb`;"],
 		["r1-r4 (js-cases)", "var t = `a\n// x\nb`;", "var t = `a\n// x\nb`;"],
 		["r1-r4 (js-cases)", "var s = 'a\\\n// x\nb';", "var s = 'a\\\n// x\nb';"],
 		["r1-r4 (js-cases)", "var a = 1; // trailing\n/* c */\nfoo();", "var a = 1; // trailing\nfoo();"],
@@ -518,11 +525,23 @@ describe("an ambiguous file gets no edit but the final trim", () =>
 
 	it("minify JS refuses when the comment-stripped text no longer scans", () =>
 	{
-		// removing the leading comment turns "#!" into a hashbang, which swallows a backtick
+		// removing the leading comment turns "#!" into a hashbang, which swallows a backtick; the refusal still trims
 		const input = "/* x */#! `\n`";
 
-		expect(js(input.replace("/* x */", "/* x */ "))).toBe("#! `\n`");
-		expect(js(input)).toBe(input);
+		expect(js(`${input}\n`)).toBe(input);
+	});
+
+	it("minify JS never makes a hashbang the input did not have (diff r6, red on main)", () =>
+	{
+		// "#!" is a hashbang only as the first two characters (a leading BOM is stripped first, as a decoder does);
+		// after whitespace or a comment it is a syntax error, which trimming or comment removal would make run
+		for (const input of ["\n#! text\nconsole.log(1);", "  #!x\n", "/* x */ #! `\n`", "/* x */\n#!x\n"])
+		{
+			expect([input, js(input)]).toEqual([input, input]);
+		}
+
+		// control: a real hashbang stays and the rest is minified
+		expect(js("#!/usr/bin/env node\n// c\nfoo();\n")).toBe("#!/usr/bin/env node\nfoo();");
 	});
 });
 
