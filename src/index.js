@@ -1,122 +1,7 @@
-import { stripJsComments__ } from "./JsComments.js";
-import { dropVoidSelfClose__, replacePreCodeBlocks__, stripCssComments__, stripHrefSrcQuotes__, stripHtmlCommentsOnce__, stripSvgComments__ } from "./MarkupScanners.js";
-
-/**
- * @description Minifies HTML content.
- * @param {string} content - Original HTML content.
- * @return {string} Minified output of the given HTML content.
- */
-function _minifiHtml__(content)
-{
-	const preservedBlocks = [];
-
-	// Extract <pre> and <code> blocks.
-	const placeholderHtml = replacePreCodeBlocks__(
-		content,
-		match => 
-		{
-			const key = `__PRESERVE_BLOCK_${preservedBlocks.length}__`;
-			preservedBlocks.push(match);
-			
-			return key;
-		}
-	);
-
-	// Minify remaining HTML.
-	let minified = placeholderHtml.replaceAll(/\r\n|\n|\t/giu, " ");
-
-	// drop the self-closing "/" on void elements: always safe, regardless of attribute order
-	minified = dropVoidSelfClose__(minified);
-
-	// don't strip quotes right before a "/": would get absorbed into the value otherwise
-	minified = stripHrefSrcQuotes__(minified)
-		.replaceAll(/>\s+</giu, "><").trim()
-		.replaceAll(/\s{2,}/giu, " ");
-
-	// Repeat until no comments remain: nested/overlapping "<!--"/"-->" can otherwise survive a
-	// single pass by re-forming across a deleted comment's boundary (CodeQL
-	// js/incomplete-multi-character-sanitization, e.g. "<!<!---->-->-->" -> "<!-->-->" -> "").
-	let previousMinified;
-	do
-	{
-		previousMinified = minified;
-		minified = stripHtmlCommentsOnce__(minified);
-	} while (minified !== previousMinified);
-
-	minified = minified
-		.replaceAll(/\s*=\s*/gu, "=")
-		.replaceAll(/\s+>/gu, ">")
-		.replaceAll(/<script\s+type=(["'])text\/javascript\1/giu, "<script")
-		.replaceAll(/<style\s+type=(["'])text\/css\1/giu, "<style")
-		.replaceAll(/\s+(checked|disabled|selected|readonly|required|autofocus|autoplay|controls|loop|muted)=(["'])\1\2/giu, " $1")
-		.trim();
-
-	// Restore preserved blocks.
-	preservedBlocks.forEach((block, i) => 
-	{
-		minified = minified.replace(`__PRESERVE_BLOCK_${i}__`, block);
-	});
-
-	return minified;
-}
-
-/**
- * @description Minifies CSS content.
- * @param {string} content - Original CSS content.
- * @return {string} Minified output of the given CSS content.
- */
-function _minifiCss__(content)
-{
-	const minified = stripCssComments__(content)
-		.replaceAll(/[\r\n\t]+/gu, "")
-		.replaceAll(/ {2,}/gu, " ")
-		.replaceAll(/ ([{:}]) /gu, "$1")
-		.replaceAll(/([;,]) /gu, "$1")
-		.replaceAll(" !", "!")
-		.replaceAll(/(\s|:)0(?:px|em|rem|vh|vw|vmin|vmax|cm|mm|in|pt|pc|ex|ch)/giu, "$10")
-		.replaceAll(/(\D)0\.(\d+)/gu, "$1.$2")
-		.replaceAll(";}", "}")
-		.replaceAll(/#([0-9a-fA-F])\1([0-9a-fA-F])\2([0-9a-fA-F])\3/gu, "#$1$2$3")
-		.replaceAll(": ", ":")
-		.replaceAll(" {", "{")
-		.replaceAll(/\{\s+/gu, "{")
-		.replaceAll(/\s+\}/gu, "}");
-
-	return minified;
-}
-
-/**
- * @description Minifies SVG content.
- * @param {string} content - Original SVG content.
- * @return {string} Minified output of the given SVG content.
- */
-function _minifiSvg__(content)
-{
-	const collapsed = content.replaceAll(/>\s+</gu, "><")
-		.replaceAll(/\s\s+/gu, " ");
-	const minified = stripSvgComments__(collapsed)
-		.replaceAll(/(\r\n|\n|\r)/gum, "")
-		.replaceAll(/\s*=\s*/gu, "=")
-		.replaceAll(/(\d)\.0+(\D)/gu, "$1$2")
-		.replaceAll(/(\d)\.(\d*?)0+(\D)/gu, "$1.$2$3")
-		.replaceAll(/(\D)0\.(\d+)/gu, "$1.$2");
-
-	return minified;
-}
-
-/**
- * @description Minifies JS content.
- * @param {string} content - Original JS content.
- * @return {string} Minified output of the given JS content.
- */
-function _minifiJs__(content)
-{
-	const minified = stripJsComments__(content)
-		.replaceAll(/\s+$/gum, "")
-		.trim();
-
-	return minified;
-}
+import { minifyCss__ } from "./CssMinifier.js";
+import { minifyHtml__ } from "./HtmlMinifier.js";
+import { minifyJs__ } from "./JsMinifier.js";
+import { minifySvg__ } from "./SvgMinifier.js";
 
 /**
  * @description Minifies JSON content.
@@ -156,16 +41,16 @@ const minify__ = (content, extension) =>
 	switch (extension)
 	{
 		case "html":
-			minifiedContent = _minifiHtml__(cleanContent);
+			minifiedContent = minifyHtml__(cleanContent);
 			break;
 		case "css":
-			minifiedContent = _minifiCss__(cleanContent);
+			minifiedContent = minifyCss__(cleanContent);
 			break;
 		case "svg":
-			minifiedContent = _minifiSvg__(cleanContent);
+			minifiedContent = minifySvg__(cleanContent);
 			break;
 		case "js":
-			minifiedContent = _minifiJs__(cleanContent);
+			minifiedContent = minifyJs__(cleanContent);
 			break;
 		case "json":
 			minifiedContent = _minifiJson__(cleanContent);
