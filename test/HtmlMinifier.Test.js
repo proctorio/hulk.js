@@ -132,10 +132,10 @@ describe("HTML plan cases (each red on main)", () =>
 		expectKept("<script type=\"importmap\">\n{ \"imports\": {} }\n</script>", null, "js");
 	});
 
-	it("H1: the default type goes and the payload is minified", () =>
+	it("H1: the payload is minified, its type kept since diff r5", () =>
 	{
-		expect(html("<script type=\"text/javascript\">\n// c\nfoo();\n</script>")).toBe(`<script>${js("\n// c\nfoo();\n")}</script>`);
-		expect(html("<style type=\"text/css\">\na { color : red }\n</style>")).toBe(`<style>${css("\na { color : red }\n")}</style>`);
+		expect(html("<script type=\"text/javascript\">\n// c\nfoo();\n</script>")).toBe(`<script type="text/javascript">${js("\n// c\nfoo();\n")}</script>`);
+		expect(html("<style type=\"text/css\">\na { color : red }\n</style>")).toBe(`<style type="text/css">${css("\na { color : red }\n")}</style>`);
 		expect(html("<script type=\"module\"> //keep\nfoo()</script>")).toBe(`<script type="module">${js(" //keep\nfoo()")}</script>`);
 		expect(html("<script type=\" text/javascript \">//c\nfoo()</script>")).toBe(`<script type=" text/javascript ">${js("//c\nfoo()")}</script>`);
 		expect(html("<script type=\"\">//c\nfoo()</script>")).toBe(`<script type="">${js("//c\nfoo()")}</script>`);
@@ -297,11 +297,34 @@ describe("HTML element content", () =>
 
 describe("HTML type and boolean attributes", () =>
 {
-	it("main already does this right: the default type goes when it is first and alone", () =>
+	it("diff r5: a script or style keeps its type in HTML, SVG and MathML, since a selector or script can read it (red on main)", () =>
 	{
-		expect(html("<script type=\"text/javascript\" src=\"a.js\"></script>")).toBe("<script src=a.js></script>");
-		expect(html("<SCRIPT type='TEXT/JAVASCRIPT'>x</SCRIPT>")).toBe("<script>x</SCRIPT>");
-		expect(html("<script src=\"a.js\" type=\"text/javascript\"></script>")).toBe("<script src=a.js type=\"text/javascript\"></script>");
+		for (const input of [
+			"<SCRIPT type='TEXT/JAVASCRIPT'>x</SCRIPT>",
+			"<script type=\"text/javascript\">console.log(document.currentScript.type)</script>",
+			"<script type=text/javascript>x</script>",
+			"<svg><style type=\"text/css\">.a{fill:red}</style></svg>",
+			"<math><script type=\"text/javascript\">1</script></math>",
+			"<math><style type=\"text/css\">a</style></math>",
+			"<math><svg><style type=\"text/css\">a</style></svg></math>"
+		]) expect(html(input), input).toBe(input);
+
+		expect(html("<script type=\"text/javascript\" src=\"a.js\"></script>")).toBe("<script type=\"text/javascript\" src=a.js></script>");
+		expect(html("<script type=\"text/javascript\"src=\"a.js\"></script>")).toBe("<script type=\"text/javascript\"src=a.js></script>");
+		expect(html("<svg><style type=\"text/css\">style[type=\"text/css\"] + rect{fill:red}</style><rect width=\"10\" height=\"10\"/></svg>")).toBe(`<svg><style type="text/css">${css("style[type=\"text/css\"] + rect{fill:red}")}</style><rect width="10" height="10"/></svg>`);
+	});
+
+	it("diff r5: a boolean attribute keeps its value, since a selector or script can read it (red on main)", () =>
+	{
+		for (const input of [
+			"<input checked=\"checked\" disabled='DISABLED'>",
+			"<input checked=\"checked\" id=\"x\">",
+			"<input checked=checked>",
+			"<input value=\"x\"checked=\"checked\">",
+			"<input value=\"checked\" checked=\"\">",
+			"<svg checked=\"checked\"><rect width=\"10\" height=\"10\"/></svg>",
+			"<math disabled=\"disabled\"><mi>x</mi></math>"
+		]) expect(html(input), input).toBe(input);
 	});
 
 	it("the type stays with a language attribute or a second type", () =>
@@ -318,44 +341,10 @@ describe("HTML type and boolean attributes", () =>
 		expectKept("<style type=\"text/less\">a { b: c }</style>", "a { b: c }", "css");
 	});
 
-	it("main already does this right: boolean attributes collapse", () =>
-	{
-		expect(html("<input checked=\"checked\" disabled='DISABLED'>")).toBe("<input checked disabled>");
-		expect(html("<input value=\"checked\" checked=\"\">")).toBe("<input value=\"checked\" checked=\"\">");
-	});
-
-	it("main already does this right: the default type goes in svg too", () =>
-	{
-		expect(html("<svg><style type=\"text/css\">.a{fill:red}</style></svg>")).toBe("<svg><style>.a{fill:red}</style></svg>");
-	});
-
-	it("boolean and void rules stay out of foreign content", () =>
+	it("the void rule stays out of foreign content", () =>
 	{
 		expect(html("<svg><x checked=\"checked\"/><input/></svg>")).toBe("<svg><x checked=\"checked\"/><input/></svg>");
 		expect(html("<svg><p><input/></svg>")).toBe("<svg><p><input></svg>");
-	});
-
-	it("diff r3: the foreign root's own attributes are foreign too (red on main)", () =>
-	{
-		// parse5 puts <svg> and <math> in their namespaces, so checked="checked" on them is a plain attribute value
-		expect(html("<svg checked=\"checked\"><rect width=\"10\" height=\"10\"/></svg>")).toBe("<svg checked=\"checked\"><rect width=\"10\" height=\"10\"/></svg>");
-		expect(html("<math disabled=\"disabled\"><mi>x</mi></math>")).toBe("<math disabled=\"disabled\"><mi>x</mi></math>");
-
-		// control: the same attribute on an HTML element still collapses
-		expect(html("<input checked=\"checked\"><svg width=\"10\"></svg>")).toBe("<input checked><svg width=\"10\"></svg>");
-	});
-
-	it("diff r4: a MathML script or style keeps its type, MathML has no default (red on main)", () =>
-	{
-		// under <math> (an <svg> there included, it is a MathML element) script and style are plain MathML elements
-		for (const input of [
-			"<math><script type=\"text/javascript\">1</script></math>",
-			"<math><style type=\"text/css\">a</style></math>",
-			"<math><svg><style type=\"text/css\">a</style></svg></math>"
-		]) expect(html(input), input).toBe(input);
-
-		// controls: the default type still goes in HTML and in SVG
-		expect(html("<script type=\"text/javascript\">1</script><svg><style type=\"text/css\">a</style></svg>")).toBe("<script>1</script><svg><style>a</style></svg>");
 	});
 
 	it("a stray \"/\" before \">\" keeps its space", () =>
@@ -723,9 +712,9 @@ describe("HTML guards pinned by the mutation pass", () =>
 
 	it("names are lowercased for A-Z only: a Kelvin sign is not \"k\" (red on main)", () =>
 	{
-		// positive control
-		expect(html("<input checked=\"checked\">")).toBe("<input checked>");
-		expect(html("<input chec\u212Aed=\"checked\">")).toBe("<input chec\u212Aed=\"checked\">");
+		// positive control: an uppercase void name loses its "/"
+		expect(html("<LINK/>")).toBe("<LINK>");
+		expect(html("<LIN\u212A/>")).toBe("<LIN\u212A/>");
 	});
 
 	it("\"<\" + a non-ASCII letter is text (red on main)", () =>
@@ -745,30 +734,6 @@ describe("HTML guards pinned by the mutation pass", () =>
 	{
 		expect(html("<img/>")).toBe("<img>");
 		expect(html("<imgx/>")).toBe("<imgx/>");
-	});
-
-	it("main already does this right: an unquoted default type stays", () =>
-	{
-		expect(html("<script type=\"text/javascript\">x</script>")).toBe("<script>x</script>");
-		expect(html("<script type=text/javascript>x</script>")).toBe("<script type=text/javascript>x</script>");
-	});
-
-	it("the default type stays when the next attribute is glued to it (red on main)", () =>
-	{
-		expect(html("<script type=\"text/javascript\"src=\"a.js\"></script>")).toBe("<script type=\"text/javascript\"src=a.js></script>");
-	});
-
-	it("main already does this right: only a quoted, whitespace-led boolean collapses", () =>
-	{
-		expect(html("<input checked=\"checked\">")).toBe("<input checked>");
-		expect(html("<input checked=checked>")).toBe("<input checked=checked>");
-		expect(html("<input value=\"x\"checked=\"checked\">")).toBe("<input value=\"x\"checked=\"checked\">");
-	});
-
-	it("a boolean stays when the next attribute is glued to it (red on main)", () =>
-	{
-		expect(html("<input checked=\"checked\" id=\"x\">")).toBe("<input checked id=\"x\">");
-		expect(html("<input checked=\"checked\"id=\"x\">")).toBe("<input checked=\"checked\"id=\"x\">");
 	});
 
 	it("main already does this right: href/src keep their quotes with whitespace around \"=\" or an empty value", () =>

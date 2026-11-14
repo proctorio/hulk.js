@@ -534,35 +534,27 @@ newlines</pre>
 		expect(minified).not.toContain(" >");
 	});
 
-	it("minify HTML removes default script type attribute", () => 
+	it("minify HTML keeps the default script type attribute (2.2.0)", () => 
 	{
 		const html = "<script type=\"text/javascript\">console.log(\"test\");</script>";
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe('<script>console.log("test");</script>');
-		expect(minified).not.toContain('type="text/javascript"');
+		expect(minified).toBe('<script type="text/javascript">console.log("test");</script>');
 	});
 
-	it("minify HTML removes default style type attribute", () => 
+	it("minify HTML keeps the default style type attribute (2.2.0)", () => 
 	{
 		const html = "<style type=\"text/css\">.test { color: red; }</style>";
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe("<style>.test{color:red}</style>");
-		expect(minified).not.toContain('type="text/css"');
+		expect(minified).toBe("<style type=\"text/css\">.test{color:red}</style>");
 	});
 
-	it("minify HTML collapses boolean attributes", () => 
+	it("minify HTML keeps boolean attribute values (2.2.0)", () => 
 	{
 		const html = "<input type=\"checkbox\" checked=\"checked\" disabled=\"disabled\" required=\"required\">";
-		const minified = minify__(html, "html");
 
-		expect(minified).toContain("checked");
-		expect(minified).toContain("disabled");
-		expect(minified).toContain("required");
-		expect(minified).not.toContain('checked="checked"');
-		expect(minified).not.toContain('disabled="disabled"');
-		expect(minified).not.toContain('required="required"');
+		expect(minify__(html, "html")).toBe(html);
 	});
 
 	it("minify HTML preserves non-boolean attribute values", () => 

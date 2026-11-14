@@ -5,9 +5,7 @@ const SOLIDUS__ = 2;
 const CLOSE__ = 3;
 
 const VOID_NAMES__ = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"];
-const BOOLEAN_NAMES__ = new Set(["checked", "disabled", "selected", "readonly", "required", "autofocus", "autoplay", "controls", "loop", "muted"]);
 const FONT_BREAKOUT__ = new Set(["color", "face", "size"]);
-const DEFAULT_TYPES__ = new Map([["script", "text/javascript"], ["style", "text/css"]]);
 
 const WORD_CHAR__ = /[\wſK]/u;
 const UPPER_ASCII__ = /[A-Z]/gu;
@@ -226,10 +224,9 @@ function tagPart__(text, from)
  * @param {string} text - HTML.
  * @param {Object} tag - Tag being read.
  * @param {Object} part - Attribute part.
- * @param {boolean} first - Whether the attribute is the first part after the tag name.
  * @return {void}
  */
-function noteAttribute__(text, tag, part, first)
+function noteAttribute__(text, tag, part)
 {
 	const name = asciiLower__(text.slice(part.at, part.nameEnd));
 
@@ -237,11 +234,7 @@ function noteAttribute__(text, tag, part, first)
 	{
 		tag.types++;
 
-		if (tag.types === 1)
-		{
-			tag.type = part;
-			tag.firstType = first && part.at > part.from;
-		}
+		if (tag.types === 1) tag.type = part;
 	}
 
 	if (name === "xml:space" && tag.space === null) tag.space = part;
@@ -271,19 +264,16 @@ function readTag__(text, start, isEnd)
 		selfClosing: false,
 		types: 0,
 		type: null,
-		firstType: false,
 		language: false,
 		fontBreak: false,
 		space: null
 	};
 	let part = tagPart__(text, nameEnd);
-	let first = true;
 
 	while (part !== null && part.kind !== CLOSE__)
 	{
-		if (part.kind === ATTRIBUTE__) noteAttribute__(text, tag, part, first);
+		if (part.kind === ATTRIBUTE__) noteAttribute__(text, tag, part);
 
-		first = false;
 		part = tagPart__(text, part.end);
 	}
 
@@ -317,36 +307,6 @@ function attributeValue__(text, part)
 function isVoid__(name)
 {
 	return VOID_NAMES__.some(voidName => name.startsWith(voidName) && !WORD_CHAR__.test(name.charAt(voidName.length)));
-}
-
-/**
- * @description Tells whether a script or style start tag's default type attribute can go.
- * @param {string} text - HTML.
- * @param {Object} tag - Start tag.
- * @return {boolean} True when it is the first and only type, quoted, the default, and no language attribute exists.
- */
-function typeDroppable__(text, tag)
-{
-	const type = tag.type;
-
-	return DEFAULT_TYPES__.has(tag.name) && tag.firstType && tag.types === 1 && !tag.language && type.quoted &&
-		asciiLower__(attributeValue__(text, type)) === DEFAULT_TYPES__.get(tag.name) &&
-		(isSpace__(text[type.end]) || text[type.end] === "/" || text[type.end] === ">");
-}
-
-/**
- * @description Tells whether a boolean attribute written as name="name" can become just name.
- * @param {string} text - HTML.
- * @param {Object} part - Attribute part.
- * @return {boolean} True for a whitespace-led listed name whose quoted value repeats it and that ends the attribute.
- */
-function collapsible__(text, part)
-{
-	const name = asciiLower__(text.slice(part.at, part.nameEnd));
-	const after = text[part.end];
-
-	return part.quoted && part.at > part.from && BOOLEAN_NAMES__.has(name) &&
-		asciiLower__(attributeValue__(text, part)) === name && (isSpace__(after) || after === "/" || after === ">");
 }
 
 /**
@@ -413,7 +373,7 @@ function escapeMarks__(state, from, to)
  * @param {Object} state - Scanner state.
  * @param {Object} part - Attribute or solidus part.
  * @param {Object} next - The tag's next part.
- * @param {Object} edits - Which start-tag edits apply: html (boolean attributes) and voidSlash.
+ * @param {Object} edits - Which start-tag edits apply: start (unquoting) and voidSlash.
  * @return {string} The part, its value vaulted.
  */
 function partText__(state, part, next, edits)
@@ -421,7 +381,7 @@ function partText__(state, part, next, edits)
 	const { text, spans } = state;
 	const lead = escapeMarks__(state, part.from, part.kind === SOLIDUS__ ? part.end : part.nameEnd);
 
-	if (part.kind === SOLIDUS__ || part.equals === -1 || (edits.html && collapsible__(text, part))) return lead;
+	if (part.kind === SOLIDUS__ || part.equals === -1) return lead;
 	if (part.end === part.value) return `${lead}=`;
 	if (edits.start && part.quoted && unquotable__(text, part, next, edits.voidSlash)) return `${lead}=${vault__(spans, attributeValue__(text, part))}`;
 
@@ -429,24 +389,20 @@ function partText__(state, part, next, edits)
 }
 
 /**
- * @description Writes a complete tag in its minified form: values vaulted, "=" spacing and the space before ">" dropped,
- * an HTML or SVG start tag's default type dropped, and for HTML start tags boolean values and a void element's "/" dropped.
+ * @description Writes a complete tag in its minified form: values vaulted, "=" spacing and the space before ">" dropped, and for an HTML void element's start tag the "/" dropped.
  * @param {Object} state - Scanner state.
  * @param {Object} tag - Complete tag from readTag__.
- * @param {string} namespace - The tag's namespace: "html", "svg" or "math" (MathML has no default type).
+ * @param {boolean} html - Whether the tag is in HTML content rather than foreign content.
  * @return {string} The tag, its values vaulted.
  */
-function tagText__(state, tag, namespace)
+function tagText__(state, tag, html)
 {
 	const { text } = state;
-	const html = namespace === "html";
 	const edits = {
 		start: !tag.isEnd,
-		html: html && !tag.isEnd,
 		voidSlash: html && !tag.isEnd && tag.selfClosing && isVoid__(tag.name)
 	};
-	const dropType = edits.start && namespace !== "math" && typeDroppable__(text, tag);
-	let output = dropType ? `<${tag.name}` : escapeMarks__(state, tag.start, tag.nameEnd);
+	let output = escapeMarks__(state, tag.start, tag.nameEnd);
 	let previous = null;
 	let part = tagPart__(text, tag.nameEnd);
 
@@ -454,7 +410,7 @@ function tagText__(state, tag, namespace)
 	{
 		const next = tagPart__(text, part.end);
 
-		if (!dropType || part.at !== tag.type.at) output += partText__(state, part, next, edits);
+		output += partText__(state, part, next, edits);
 
 		previous = part;
 		part = next;
@@ -519,7 +475,7 @@ function collapseSpace__(text, betweenTags)
  */
 function tagSource__(state, tag)
 {
-	return restoreVault__(state.spans, collapseSpace__(tagText__(state, tag, "html"), false));
+	return restoreVault__(state.spans, collapseSpace__(tagText__(state, tag, true), false));
 }
 
 export {
