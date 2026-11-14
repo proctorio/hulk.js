@@ -347,10 +347,10 @@ describe("SVG reviewer probes", () =>
 
 	it("r5: a CSS comment whose removal forms ]]> keeps the CDATA body as written (main already does this right)", () =>
 	{
-		const input = `${ROOT__}<style><![CDATA[a{--x:[[]]/**/>}]]></style></svg>`;
+		const input = `${ROOT__}<style><![CDATA[a{b:[[]]/**/>}]]></style></svg>`;
 
-		// premise: the CSS minifier forms the terminator
-		expect(payload("a{--x:[[]]/**/>}", "css")).toContain("]]>");
+		// premise: the CSS minifier forms the terminator (an ordinary declaration: custom-property values are kept as written)
+		expect(payload("a{b:[[]]/**/>}", "css")).toContain("]]>");
 
 		expect(svg(input)).toBe(input);
 	});
