@@ -1,9 +1,5 @@
 import { stripJsComments__ } from "./JsComments.js";
-
-// HTML void elements: the self-closing "/" before ">" is never meaningful for these (browsers
-// treat "<img ... />" and "<img ...>" identically), unlike svg/mathml foreign content elements
-// (e.g. <path/>, <circle/>), where the "/" is what tells the parser the element has no children.
-const VOID_ELEMENTS__ = "area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr";
+import { dropVoidSelfClose__, replacePreCodeBlocks__, stripCssComments__, stripHrefSrcQuotes__, stripHtmlCommentsOnce__, stripSvgComments__ } from "./MarkupScanners.js";
 
 /**
  * @description Minifies HTML content.
@@ -15,8 +11,8 @@ function _minifiHtml__(content)
 	const preservedBlocks = [];
 
 	// Extract <pre> and <code> blocks.
-	const placeholderHtml = content.replaceAll(
-		/<(pre|code)(\b[^>]*)>[\s\S]*?<\/\1>/giu,
+	const placeholderHtml = replacePreCodeBlocks__(
+		content,
 		match => 
 		{
 			const key = `__PRESERVE_BLOCK_${preservedBlocks.length}__`;
@@ -27,14 +23,13 @@ function _minifiHtml__(content)
 	);
 
 	// Minify remaining HTML.
-	let minified = placeholderHtml
-		.replaceAll(/\r\n|\n|\t/giu, " ")
+	let minified = placeholderHtml.replaceAll(/\r\n|\n|\t/giu, " ");
 
-		// drop the self-closing "/" on void elements: always safe, regardless of attribute order
-		.replaceAll(new RegExp(`(<(?:${VOID_ELEMENTS__})\\b[^>]*?)\\s*/>`, "giu"), "$1>")
+	// drop the self-closing "/" on void elements: always safe, regardless of attribute order
+	minified = dropVoidSelfClose__(minified);
 
-		// don't strip quotes right before a "/": would get absorbed into the value otherwise
-		.replaceAll(/(href|src)=('|")(\S+)('|")(?!\s*\/)/giu, "$1=$3")
+	// don't strip quotes right before a "/": would get absorbed into the value otherwise
+	minified = stripHrefSrcQuotes__(minified)
 		.replaceAll(/>\s+</giu, "><").trim()
 		.replaceAll(/\s{2,}/giu, " ");
 
@@ -45,7 +40,7 @@ function _minifiHtml__(content)
 	do
 	{
 		previousMinified = minified;
-		minified = minified.replaceAll(/<!--[\D\d]*?-->/giu, "");
+		minified = stripHtmlCommentsOnce__(minified);
 	} while (minified !== previousMinified);
 
 	minified = minified
@@ -72,8 +67,8 @@ function _minifiHtml__(content)
  */
 function _minifiCss__(content)
 {
-	const minified = content
-		.replaceAll(/\/\*(?:(?!\*\/)[\s\S])*\*\/|[\r\n\t]+/gu, "")
+	const minified = stripCssComments__(content)
+		.replaceAll(/[\r\n\t]+/gu, "")
 		.replaceAll(/ {2,}/gu, " ")
 		.replaceAll(/ ([{:}]) /gu, "$1")
 		.replaceAll(/([;,]) /gu, "$1")
@@ -97,9 +92,9 @@ function _minifiCss__(content)
  */
 function _minifiSvg__(content)
 {
-	const minified = content.replaceAll(/>\s+</gu, "><")
-		.replaceAll(/\s\s+/gu, " ")
-		.replaceAll(/<![\t\n\r ]*(--([^-]|[\n\r]|-[^-])*--[\t\n\r ]*)>/gu, "")
+	const collapsed = content.replaceAll(/>\s+</gu, "><")
+		.replaceAll(/\s\s+/gu, " ");
+	const minified = stripSvgComments__(collapsed)
 		.replaceAll(/(\r\n|\n|\r)/gum, "")
 		.replaceAll(/\s*=\s*/gu, "=")
 		.replaceAll(/(\d)\.0+(\D)/gu, "$1$2")
