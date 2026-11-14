@@ -2,7 +2,7 @@ import minify__ from "../src/index.js";
 
 // Seeded random inputs through every minifier. The scanners vault protected spans as U+0001 + index + U+0001 and
 // restore them at the end, so a span vaulted twice, a marker a rule cut in half, or a marker emitted after the restore
-// would show up as a U+0001 in the output that the input never had. Inputs are built from tokens that sit on the
+// would show up as a U+0001 in the output that the input never had, or as a marker-shaped run the input never held. Inputs are built from tokens that sit on the
 // scanners' state boundaries in all four languages, plus U+0001 itself and text shaped like a marker.
 const TOKENS__ = [
 	"<", ">", "/", "/>", "</", "=", "\"", "'", "`", "${", "}", "{", "(", ")", "[", "]", ";", ":", ",", "!", "?", "&", "#", "@", "\\",
@@ -14,6 +14,8 @@ const TOKENS__ = [
 	"url(", "#url(", "\\41 ", "\"a\nb", "--x:", "margin:", "0px", "0.5", "1.50", "#aabbcc", "style(", "calc(",
 	"return", "yield", "of", "/re/", "x++", "\u0001", "\u00010\u0001", "__PRESERVE_BLOCK_0__", "$&", "$$", "a", "1"
 ];
+const MARK__ = String.fromCharCode(1);
+const MARKER__ = new RegExp(`${MARK__}\\d+${MARK__}`, "gu");
 const CASES__ = 5000;
 const MAX_TOKENS__ = 40;
 
@@ -69,7 +71,12 @@ describe("minify__ on seeded random inputs", { timeout: 120000 }, () =>
 
 				if (output !== input) changed++;
 				if (marks__(input) > 0) withMarks++;
-				if (marks__(output) > marks__(input) && leaks.length < 5) leaks.push(input);
+
+				// a leaked marker either adds a U+0001 or, when input U+0001 were dropped with a comment, shows a marker the
+				// input never held
+				const leaked = marks__(output) > marks__(input) || (output.match(MARKER__) || []).some(marker => !input.includes(marker));
+
+				if (leaked && leaks.length < 5) leaks.push(input);
 			}
 
 			expect(leaks).toEqual([]);

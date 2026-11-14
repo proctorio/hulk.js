@@ -574,6 +574,20 @@ describe("HTML gate and latch beyond what main gets right", () =>
 		expect(html("<p>a</p>\n<svg><title><b>x</b>\n\n<!--c--></title></svg>")).toBe("<p>a</p><svg><title><b>x</b>\n\n<!--c--></title></svg>");
 		expect(html("<p>a</p>\n<pre><svg><g></pre> a  b")).toBe("<p>a</p> <pre><svg><g></pre> a  b");
 	});
+
+	it("diff r1: in a gated document, raw text that hides a state-changing tag latches the rest (red on main)", () =>
+	{
+		// the parser can ignore the <style> (in select, in frameset), so its "<textarea>" or "<!--" may be real: the
+		// scanner cannot know where that RCDATA or comment ends, so nothing from the style on is edited
+		expect(html("<select><style><textarea></style>A  B<!--text--></textarea>")).toBe("<select><style><textarea></style>A  B<!--text--></textarea>");
+		expect(html("<p>x  y</p><frameset><script><!--</script>A  B--><p>x</p>")).toBe("<p>x y</p><frameset><script><!--</script>A  B--><p>x</p>");
+
+		// control: a gated document whose raw text hides nothing is still minified outside its payloads
+		expect(html("<p>x  y</p>\n<select><option>a</option></select>\n<style>a { color: red }</style>\n<p>c  d</p>")).toBe("<p>x y</p><select><option>a</option></select><style>a { color: red }</style><p>c d</p>");
+
+		// control: the same hidden tag in an ungated document is raw text the parser cannot skip
+		expect(html("<p>x  y</p><style><textarea></style>A  B")).toBe(`<p>x y</p><style>${minify__("<textarea>", "css")}</style>A B`);
+	});
 });
 
 describe("HTML foreign content", () =>

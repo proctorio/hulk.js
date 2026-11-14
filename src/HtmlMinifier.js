@@ -11,6 +11,7 @@ const BOGUS__ = 4;
 const CDATA__ = 5;
 
 const GATE__ = new RegExp(`<(?:${["select", "frameset", "noscript", "col"].map(caseless__).join("|")})`, "u");
+const HIDDEN_STATE__ = new RegExp(`<(?:!--|(?:${["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext", "svg", "math"].map(caseless__).join("|")})[\\t\\n\\f\\r />])`, "u");
 const BLOCK_NAMES__ = new Set(["pre", "code", "listing"]);
 const VAULTED_ELEMENTS__ = new Set(["script", "style", "textarea"]);
 const FOREIGN_ROOTS__ = new Set(["svg", "math"]);
@@ -165,6 +166,14 @@ function textElement__(state, tag)
 {
 	const { text } = state;
 	const close = textEnd__(text, tag);
+
+	if (state.gated && HIDDEN_STATE__.test(text.slice(tag.end, close === -1 ? text.length : close)))
+	{
+		latch__(state, tag.start);
+
+		return;
+	}
+
 	const endTag = close === -1 ? null : readTag__(text, close, true);
 	const complete = endTag !== null && endTag.end !== -1;
 

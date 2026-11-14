@@ -627,6 +627,14 @@ describe("SVG character data", () =>
 
 describe("SVG style and script payloads", () =>
 {
+	it("diff r1: payloads end to end, written out (red on main)", () =>
+	{
+		// the other payload tests compute the expected payload with minify__(…, "css"/"js"); this one pins the bytes
+		const input = "<svg xmlns=\"http://www.w3.org/2000/svg\"><style>\n  .a { fill: #ffffff; }\n  .b { width: 0px }\n</style><script><![CDATA[\n// c\nconst t = `x\n// keep\n`;\n]]></script></svg>";
+
+		expect(svg(input)).toBe("<svg xmlns=\"http://www.w3.org/2000/svg\"><style> .a{fill:#fff}.b{width:0}</style><script><![CDATA[const t = `x\n// keep\n`;]]></script></svg>");
+	});
+
 	it("style types: none or text/css in any ASCII case (red on main)", () =>
 	{
 		const body = " a { fill : red ; } ";

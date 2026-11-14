@@ -504,6 +504,19 @@ function _closeBracket__(state)
 }
 
 /**
+ * @description Tells whether a line break follows return, yield or await, where ASI may end the statement.
+ * @param {Object} state - Scan state, at the token after it.
+ * @return {boolean} True when the previous token is one of them and a line terminator follows it.
+ */
+function _restrictedBreak__(state)
+{
+	const { previous } = state;
+	const restricted = (previous.type === "keyword" && previous.value === "return") || (previous.type === "contextual" && previous.value !== "of");
+
+	return restricted && _lineBreakBetween__(state, state.tokenEnd, state.index);
+}
+
+/**
  * @description Scans "++" or "--", or refuses an HTML-like "-->" comment.
  * @param {Object} state - Scan state, at the operator.
  * @return {boolean} False at a "-->" that only whitespace and comments separate from a line start.
@@ -542,7 +555,7 @@ function _scanPunctuator__(state)
 	{
 		state.openers.push({
 			opener: "{",
-			kind: _braceKind__(state.previous)
+			kind: _restrictedBreak__(state) ? "uncertain" : _braceKind__(state.previous)
 		});
 	}
 

@@ -216,6 +216,20 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 		]);
 	});
 
+	it("diff r1: CDO and CDC before a prelude do not hide @property (red on main)", () =>
+	{
+		// a stylesheet ignores top-level "<!--" and "-->", so the block is still an @property registration: its
+		// initial-value stays as written, matching the style() query that compares against it
+		expectCases([
+			[
+				"<!--\n@property --k{syntax:\"*\";inherits:false;initial-value:#aabbcc}\n.item{opacity:if(style(--k:#aabbcc):1;else:0)}",
+				"<!-- @property --k{syntax:\"*\";inherits:false;initial-value:#aabbcc}.item{opacity:if(style(--k:#aabbcc):1;else:0)}"
+			],
+			["-->@property --k{initial-value:#aabbcc}a{color:#aabbcc}", "-->@property --k{initial-value:#aabbcc}a{color:#abc}"],
+			["<!-- -->  <!--@media x{a{color:#aabbcc}}", "<!-- --> <!--@media x{a{color:#abc}}"]
+		]);
+	});
+
 	it("r3, r15: the leading zero goes only from a whole number token", () =>
 	{
 		// positive control: whole number tokens still lose it

@@ -642,6 +642,25 @@ function colon__(state)
 }
 
 /**
+ * @description Finds where a rule prelude starts once the CDO and CDC tokens a stylesheet ignores are skipped.
+ * @param {string} prelude - Trimmed prelude text.
+ * @return {number} Index of the prelude's first significant character.
+ */
+function preludeStart__(prelude)
+{
+	let index = 0;
+
+	for (;;)
+	{
+		while (index < prelude.length && isWhitespaceCode__(prelude.charCodeAt(index))) index++;
+
+		if (prelude.startsWith("<!--", index)) index += 4;
+		else if (prelude.startsWith("-->", index)) index += 3;
+		else return index;
+	}
+}
+
+/**
  * @description Handles "{": a rule block, or a {} group inside brackets (vaulted verbatim).
  * @param {Object} state - Scanner state.
  */
@@ -658,9 +677,10 @@ function openBrace__(state)
 	}
 
 	const prelude = segmentText__(state);
+	const at = preludeStart__(prelude);
 	let kind = "S";
 
-	if (prelude.startsWith("@")) kind = asciiLower__(prelude.slice(1, 9)) === "property" && !isNameCode__(prelude.charCodeAt(9)) && prelude.charCodeAt(9) !== 0x5C ? "P" : "A";
+	if (prelude.startsWith("@", at)) kind = asciiLower__(prelude.slice(at + 1, at + 9)) === "property" && !isNameCode__(prelude.charCodeAt(at + 9)) && prelude.charCodeAt(at + 9) !== 0x5C ? "P" : "A";
 	state.blocks.push(state.block);
 	state.block = kind;
 	push__(state, "B");
