@@ -59,7 +59,7 @@ const SLASH_AFTER_BRACE__ = new Map([
 	["expression", false],
 	["uncertain", null]
 ]);
-const OPERAND_TYPES__ = new Set(["closeBracket", "closeParen", "contextual", "identifier", "number", "regex", "string", "template"]);
+const OPERAND_TYPES__ = new Set(["closeBracket", "closeParen", "identifier", "number", "regex", "string", "template"]);
 const START__ = { type: "start" };
 const NO_OPENER__ = { opener: "" };
 
@@ -160,6 +160,7 @@ function _slashStartsRegex__(previous)
 		case "keyword":
 			return true;
 		case "contextual":
+		case "increment":
 		case "statementEnd":
 		case "label":
 			return null;
@@ -529,7 +530,8 @@ function _scanIncrement__(state)
 
 	state.index += 2;
 
-	if (OPERAND_TYPES__.has(previous.type)) return _emit__(state, { type: "postfix" });
+	if (previous.type === "contextual") return _emit__(state, { type: "increment" });
+	if (OPERAND_TYPES__.has(previous.type) && !previous.control && !_lineBreakBetween__(state, state.tokenEnd, index)) return _emit__(state, { type: "postfix" });
 
 	return _emit__(state, {
 		type: "punctuator",
@@ -562,7 +564,9 @@ function _scanPunctuator__(state)
 	if (content.startsWith("<!--", index)) return false;
 	if (pair === "++" || pair === "--") return _scanIncrement__(state);
 
-	const length = pair === "=>" || (pair === "?." && !_isDigit__(content.charCodeAt(index + 2))) ? 2 : 1;
+	let length = pair === "=>" || (pair === "?." && !_isDigit__(content.charCodeAt(index + 2))) ? 2 : 1;
+
+	if (content.startsWith("...", index)) length = 3;
 
 	state.index += length;
 

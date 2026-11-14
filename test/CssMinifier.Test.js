@@ -235,6 +235,25 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 		]);
 	});
 
+	it("diff r2: an escape in an at-rule name counts as @property (red on the r1 tree)", () =>
+	{
+		// CSS decodes "@\70roperty" as "@property"; the block's initial-value must stay as written, like the style()
+		// query that compares against it. Any escape in the name is treated so: it can only keep bytes.
+		expectCases([
+			[
+				"@\\70roperty --k{syntax:\"*\";inherits:false;initial-value:{1;}}\n.item{opacity:if(style(--k:{1;}):1;else:0)}",
+				"@\\70roperty --k{syntax:\"*\";inherits:false;initial-value:{1;}}.item{opacity:if(style(--k:{1;}):1;else:0)}"
+			],
+			["@prop\\65rty --k{initial-value:{1;}}", "@prop\\65rty --k{initial-value:{1;}}"],
+			["@property\\0 --k{initial-value:{1;}}", "@property\\0 --k{initial-value:{1;}}"],
+
+			// controls: the plain name in any case, a longer name, and an escaped @media whose rules keep their edits
+			["@PROPERTY --k{initial-value:{1;}}", "@PROPERTY --k{initial-value:{1;}}"],
+			["@propertyx --k{initial-value:{1;}}", "@propertyx --k{initial-value:{1}}"],
+			["@\\6d edia x{a{color:#aabbcc}}", "@\\6d edia x{a{color:#abc}}"]
+		]);
+	});
+
 	it("r3, r15: the leading zero goes only from a whole number token", () =>
 	{
 		// positive control: whole number tokens still lose it

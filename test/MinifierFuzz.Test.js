@@ -2,8 +2,15 @@ import minify__ from "../src/index.js";
 
 // Seeded random inputs through every minifier. The scanners vault protected spans as U+0001 + index + U+0001 and
 // restore them at the end, so a span vaulted twice, a marker a rule cut in half, or a marker emitted after the restore
-// would show up as a U+0001 in the output that the input never had, or as a marker-shaped run the input never held. Inputs are built from tokens that sit on the
-// scanners' state boundaries in all four languages, plus U+0001 itself and text shaped like a marker.
+// would show up as a U+0001 in the output that the input never had, or as a marker-shaped run the input never held.
+// Inputs are built from tokens that sit on the scanners' state boundaries in all four languages, plus U+0001 itself
+// and text shaped like a marker.
+//
+// When the input holds U+0001 and a rule drops some of them (a comment), a leaked marker could stand in for the dropped
+// ones and pass both checks. So every input is run a second time with U+0001 swapped for U+0002, which no scanner
+// treats specially: that output must hold no U+0001 at all. In HTML, SVG and JS the two outputs must also agree once
+// the swap is undone; CSS reads a U+0001 in a declaration name as a possible escape and keeps that value as written,
+// so its two outputs can differ there.
 const TOKENS__ = [
 	"<", ">", "/", "/>", "</", "=", "\"", "'", "`", "${", "}", "{", "(", ")", "[", "]", ";", ":", ",", "!", "?", "&", "#", "@", "\\",
 	" ", "  ", "\n", "\r\n", "\t", "\f", "\u00A0", "\u2028", "→", "😀", "\uD800",
@@ -77,6 +84,16 @@ describe("minify__ on seeded random inputs", { timeout: 120000 }, () =>
 				const leaked = marks__(output) > marks__(input) || (output.match(MARKER__) || []).some(marker => !input.includes(marker));
 
 				if (leaked && leaks.length < 5) leaks.push(input);
+
+				if (marks__(input) > 0)
+				{
+					const swapped = minify__(input.replaceAll("\u0001", "\u0002"), extension);
+
+					if ((marks__(swapped) > 0 || (extension !== "css" && swapped.replaceAll("\u0002", "\u0001") !== output)) && leaks.length < 5)
+					{
+						leaks.push(input);
+					}
+				}
 			}
 
 			expect(leaks).toEqual([]);

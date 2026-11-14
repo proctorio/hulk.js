@@ -661,6 +661,23 @@ function preludeStart__(prelude)
 }
 
 /**
+ * @description Classifies an at-rule block by its name; a name with an escape in it counts as @property.
+ * @param {string} prelude - Trimmed prelude text, escapes vaulted.
+ * @param {number} start - Index after the "@".
+ * @return {string} "P" for @property, "A" for any other at-rule.
+ */
+function atRuleKind__(prelude, start)
+{
+	let end = start;
+
+	while (end < prelude.length && (isNameCode__(prelude.charCodeAt(end)) || prelude.charCodeAt(end) === 1)) end++;
+
+	const name = prelude.slice(start, end);
+
+	return asciiLower__(name) === "property" || name.includes(MARK__) ? "P" : "A";
+}
+
+/**
  * @description Handles "{": a rule block, or a {} group inside brackets (vaulted verbatim).
  * @param {Object} state - Scanner state.
  */
@@ -680,7 +697,7 @@ function openBrace__(state)
 	const at = preludeStart__(prelude);
 	let kind = "S";
 
-	if (prelude.startsWith("@", at)) kind = asciiLower__(prelude.slice(at + 1, at + 9)) === "property" && !isNameCode__(prelude.charCodeAt(at + 9)) && prelude.charCodeAt(at + 9) !== 0x5C ? "P" : "A";
+	if (prelude.startsWith("@", at)) kind = atRuleKind__(prelude, at + 1);
 	state.blocks.push(state.block);
 	state.block = kind;
 	push__(state, "B");
