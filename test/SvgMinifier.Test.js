@@ -470,7 +470,9 @@ describe("SVG output main already gets right is unchanged", () =>
 			`${root}<style>rect[width="1.0"]{fill:red}</style><rect width="1.0" height="1"/></svg>`,
 			`${root}<style>rect::after{content:attr(width)}</style><rect width="1.0"/></svg>`,
 			`${root}<style>@import "a.css";</style><rect width="1.0"/></svg>`,
-			`<?xml-stylesheet href="a.css"?>${root}<rect width="1.0"/></svg>`
+			`<?xml-stylesheet href="a.css"?>${root}<rect width="1.0"/></svg>`,
+			"<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:s=\"http://www.w3.org/2000/svg\"><s:style>rect[width=\"1.0\"]{fill:red}</s:style><rect width=\"1.0\"/></svg>",
+			`${root}<style type="text/css">rect[width="1.0"]{fill:red}</style><rect width="1.0"/></svg>`
 		];
 
 		for (const input of inputs) expect(svg(input), input).toBe(input);

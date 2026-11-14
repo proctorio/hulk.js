@@ -270,6 +270,11 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 			["@supports (display: grid){a{b:c}}", "@supports (display: grid){a{b:c}}"],
 			["@import url(x) screen and (min-width: 1px);", "@import url(x) screen and (min-width: 1px);"],
 
+			// spans kept verbatim stay so: a custom property's value, a style() query, a {} group in a value
+			["a{--x:a: b;--y:{a: b}}", "a{--x:a: b;--y:{a: b}}"],
+			["@container style(--x: 1){a{b:c}}", "@container style(--x: 1){a{b:c}}"],
+			["a{b:c( {x: y} )}", "a{b:c( {x: y} )}"],
+
 			// controls: declarations and @media preludes lose it as on main, a custom property's lone space stays
 			["@media (min-width: 768px) and (hover:\nhover){a{color : red ;margin: 0px}}", "@media (min-width:768px) and (hover:hover){a{color:red ;margin:0}}"],
 			["a{color: red;margin:\n0px;--x: ;width: /* c */ 1px}", "a{color:red;margin:0;--x: ;width:1px}"],
