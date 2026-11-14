@@ -15,8 +15,9 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 // - "<!--": a comment. It ends at "<!-->", "<!--->", the first "-->" or "--!>", or EOF. Both terminator searches are
 //   cached, so many comments do not rescan the text. Comments go to the stream as written; the comment loop below
 //   removes them, in one place (wi-47221 turns them into a marker).
-// - "<!" (DOCTYPE included), "<?", "</" + non-letter: a bogus comment to the first ">", passed through. A DOCTYPE ends
-//   at its first ">" even inside a quoted identifier, as the tokenizer does.
+// - "<!", "<?", "</" + non-letter: a bogus comment to the first ">", passed through.
+// - "<!DOCTYPE" (any case): to its first ">", even inside a quoted identifier, as the tokenizer does, and vaulted whole
+//   as a tag-like marker: a changed public identifier can change the document mode (diff r2).
 // - "<![CDATA[" inside svg/math: vaulted to "]]>".
 // - "<" + letter, "</" + letter: a tag. The attribute walk follows the tokenizer: a name runs to whitespace, "/", ">" or
 //   "="; a quoted value to its quote; an unquoted value to whitespace or ">" (so <img src=x/> keeps its "/": H8).
@@ -40,15 +41,22 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 //   "<!--" (script) is thrown away and the payload kept as written (H1).
 // - pre, code and listing: preserved blocks, vaulted whole as a text-like marker. Nesting counts the same name only;
 //   comments, raw text and values inside do not close them, "</pre >" does (H7), and an unclosed one runs to EOF.
-// - svg and math open foreign content: a stack of open foreign elements, no raw text there, script/style text inside
-//   it vaulted. An end tag pops to its nearest match. A breakout tag (div, p, b, ..., and </p> </br>) leaves foreign
-//   content and is read as HTML.
+// - svg and math open foreign content: a stack of open foreign elements, no raw text there. An end tag pops to its
+//   nearest match. A breakout tag (div, p, b, ..., and </p> </br>) leaves foreign content and is read as HTML.
+//   Character data is vaulted, whitespace-only runs included, anywhere inside script, style, text, tspan or textPath,
+//   and in an xml:space scope: each element on the stack inherits its parent's xml:space, an xml:space attribute (the
+//   first one) sets it, and only exactly "default" resets it (any other value, an entity included, preserves). The
+//   SVG minifier's S1 rule, brought in by diff r2. Whitespace between other foreign elements collapses as before.
 // - Latch: where the scanner cannot know the parser's state (a start tag or CDATA inside an integration point such as
 //   foreignObject/title/desc/mi/annotation-xml, or a foreign end tag with no open match, or a tag cut off by EOF),
 //   the rest of the document is vaulted verbatim from that tag on.
 // - Gate: if the raw input holds "<select", "<frameset", "<noscript" or "<col" (any case), no payload is minified:
 //   those can make the parser ignore a script or style start tag. Everything else assumes scripting on, so noscript is
-//   raw text.
+//   raw text. In such a gated document, raw text that holds a state-changing tag latches from its start tag (diff r1).
+// - Ignored foreign root: if the raw input holds "<select", "<frameset" or "<col" (not "<noscript": with scripting on
+//   it cannot make the parser ignore an svg), the parser may ignore <svg>/<math>, so what follows is HTML. There, a
+//   start tag of script, style, xmp, iframe, noembed, noframes, noscript, textarea, title or plaintext in foreign
+//   content, or a CDATA section, latches the rest (diff r2).
 //
 // Stream rules afterwards, all with HTML whitespace and in one linear pass: line feed and tab become a space, a run
 // between ">" and "<" goes (H5 is kept: "<b>x</b> <i>y</i>" still loses its space), longer runs become one space, then
@@ -360,10 +368,10 @@ describe("HTML main already does this right (r1 controls)", () =>
 		expect(html("a </")).toBe("a </");
 	});
 
-	it("removes comments and doctype spacing as before", () =>
+	it("removes comments and the whitespace around a DOCTYPE as before", () =>
 	{
 		expect(html("<p>1</p><!--a--><p>2</p>\n<!-- b -->\n<p>3</p>")).toBe("<p>1</p><p>2</p><p>3</p>");
-		expect(html("<!DOCTYPE  html>\n<html>\n  <body>\n</body></html>")).toBe("<!DOCTYPE html><html><body></body></html>");
+		expect(html("<!DOCTYPE html>\n<html>\n  <body>\n</body></html>")).toBe("<!DOCTYPE html><html><body></body></html>");
 		expect(html("<div>  <p>  Hello  </p>  </div>")).toBe("<div><p> Hello </p></div>");
 	});
 
@@ -877,6 +885,107 @@ describe("HTML guards pinned by the mutation pass", () =>
 	it("main already does this right: \"</\" + a non-letter starts a bogus comment", () =>
 	{
 		expectKept("</ <style>a { b }</style>", "a { b }", "css");
+	});
+});
+
+describe("HTML diff review round 2", () =>
+{
+	it("diff r2: with <select>, <frameset> or <col> in it, an HTML raw text or RCDATA start tag in foreign content latches the rest (red on main)", () =>
+	{
+		// the parser ignores <svg>/<math> in select (and frameset, column group) modes, so the <textarea> is HTML RCDATA
+		// whose value is "A  B<!--text-->"; the scanner cannot know that, so nothing from that tag on is edited
+		const inputs = [
+			"<select><svg><textarea>A  B<!--text--></textarea></svg>",
+			"<select><math><textarea>A  B<!--text--></textarea></math>",
+			"<select><svg><title>A  B<!--x--></title></svg><p>c  d</p>",
+			"<SeLeCt><svg><g><textarea>A  B</textarea></g></svg>",
+			"<frameset><svg><textarea>A  B</textarea></svg>",
+			"<table><col><svg><textarea>A  B</textarea></svg></table>",
+			...["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext"].map(name => `<select><svg><${name}>A  B<!--c--></${name}></svg>`)
+		];
+
+		for (const input of inputs) expect(html(input), input).toBe(input);
+
+		expect(html("<p>a  b</p>\n<select></select>\n<svg>\n<g>  </g>\n<title>t  u</title></svg>")).toBe("<p>a b</p><select></select><svg><g></g><title>t  u</title></svg>");
+	});
+
+	it("diff r2: with <select> in it, a CDATA section in foreign content latches the rest (red on main)", () =>
+	{
+		// in select mode "<![CDATA[x>" is a bogus comment, and the <textarea> after it is real
+		expect(html("<select><svg><![CDATA[x><textarea>]]>A  B</textarea></svg>")).toBe("<select><svg><![CDATA[x><textarea>]]>A  B</textarea></svg>");
+		expect(html("<p>a  b</p><select></select><svg>  <![CDATA[x]]>  <g>  </g>  </svg>")).toBe("<p>a b</p><select></select><svg><![CDATA[x]]>  <g>  </g>  </svg>");
+	});
+
+	it("main already does this right: without <select>, <frameset> or <col>, foreign content is minified, also when <noscript> gates the payloads", () =>
+	{
+		expect(html("<p>a  b</p><svg><title>t  u</title></svg><p>c  d</p>")).toBe("<p>a b</p><svg><title>t u</title></svg><p>c d</p>");
+		expect(html("<noscript></noscript><p>a  b</p><svg><title>t  u</title></svg><p>c  d</p>")).toBe("<noscript></noscript><p>a b</p><svg><title>t u</title></svg><p>c d</p>");
+		expect(html("<noscript></noscript><svg><![CDATA[x]]><g>  </g>  </svg><p>c  d</p>")).toBe("<noscript></noscript><svg><![CDATA[x]]><g></g></svg><p>c d</p>");
+	});
+
+	it("diff r2: character data inside svg text, tspan and textPath stays as written, whitespace-only runs included (red on main)", () =>
+	{
+		const inputs = [
+			"<svg xml:space=\"preserve\"><text>A  B</text></svg>",
+			"<svg><text><tspan>a</tspan> <tspan>b</tspan></text></svg>",
+			"<svg><text>\n  a  <tspan>b</tspan>\n</text></svg>",
+			"<svg><tspan>a  b</tspan></svg>",
+			"<svg><textPath startOffset=\"1\">a  b</textPath></svg>",
+			"<svg><TEXT><tspan xml:space=\"default\">c  d</tspan>  e</TEXT></svg>",
+			"<svg><text><a xml:space=\"default\">c  d</a></text></svg>"
+		];
+
+		for (const input of inputs) expect(html(input), input).toBe(input);
+
+		// the scope ends with its element, and a breakout leaves it
+		expect(html("<svg>\n  <text>a  b</text>\n  <g>  x  y</g>\n</svg>")).toBe("<svg><text>a  b</text><g> x y</g></svg>");
+		expect(html("<svg xml:space=\"preserve\"><text>a  b</text><p>c  d</p><svg><g>  x  y</g></svg>")).toBe("<svg xml:space=\"preserve\"><text>a  b</text><p>c d</p><svg><g> x y</g></svg>");
+	});
+
+	it("diff r2: an xml:space scope keeps character data; it is inherited, and only exactly \"default\" resets it (red on main)", () =>
+	{
+		const inputs = [
+			"<svg xml:space=\"preserve\"><g>  x  y  <path/>  </g></svg>",
+			"<svg xml:space=\"&#100;efault\"><g>  x  y</g></svg>",
+			"<svg xml:space=\"Default\"><g>  x  y</g></svg>",
+			"<svg xml:space><g>  x  y</g></svg>",
+			"<svg XML:SPACE=preserve><g>  x  y</g></svg>",
+			"<svg xml:space=\"preserve\" xml:space=\"default\"><g>  x  y</g></svg>"
+		];
+
+		for (const input of inputs) expect(html(input), input).toBe(input);
+
+		expect(html("<svg xml:space=\"preserve\"><g xml:space=\"default\">  <path/>  x  y</g>  z  </svg>")).toBe("<svg xml:space=\"preserve\"><g xml:space=\"default\"><path/> x y</g>  z  </svg>");
+		expect(html("<svg xml:space=\"default\" xml:space=\"preserve\"><g>  x  y</g></svg>")).toBe("<svg xml:space=\"default\" xml:space=\"preserve\"><g> x y</g></svg>");
+	});
+
+	it("main already does this right: indentation between other svg elements still collapses", () =>
+	{
+		expect(html("<svg>\n  <g>\n    <path d=\"M0 0\"/>\n  </g>\n</svg>")).toBe("<svg><g><path d=\"M0 0\"/></g></svg>");
+		expect(html("<svg xml:space=\"default\">\n  <g>  x  y</g>\n</svg>")).toBe("<svg xml:space=\"default\"><g> x y</g></svg>");
+	});
+
+	it("diff r2: a DOCTYPE is kept as written (red on main)", () =>
+	{
+		// removing the second space before "Transitional" turns no-quirks mode into quirks mode
+		const witness = "<!DOCTYPE html PUBLIC \"-//W3C//DTD HTML 4.01  Transitional//EN\"><html><body><p>A</p></body></html>";
+
+		expect(html(witness)).toBe(witness);
+		expect(html("<!DOCTYPE  html>\n<html>\n  <body>\n</body></html>")).toBe("<!DOCTYPE  html><html><body></body></html>");
+		expect(html("<!doctype\thtml  SYSTEM 'a  b'>\n<p>x</p>")).toBe("<!doctype\thtml  SYSTEM 'a  b'><p>x</p>");
+		expect(html("<p>x</p>\n<!DOCTYPE html  a")).toBe("<p>x</p><!DOCTYPE html  a");
+	});
+
+	it("main already does this right: a plain DOCTYPE, and bogus comments still go through the stream rules", () =>
+	{
+		expect(html("<!DOCTYPE html>\n<html>\n<p>x</p>")).toBe("<!DOCTYPE html><html><p>x</p>");
+		expect(html("<?doctype  a>\n<p>x</p>")).toBe("<?doctype a><p>x</p>");
+		expect(html("<!doctyp  a>\n<p>x</p>")).toBe("<!doctyp a><p>x</p>");
+	});
+
+	it("main already does this right: the fuzz witness, a comment holding \"\\u00012\\u0001\" before a pre", () =>
+	{
+		expect(html("<!--\u00012\u0001--><pre>text</pre>")).toBe("<pre>text</pre>");
 	});
 });
 

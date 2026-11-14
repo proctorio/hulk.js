@@ -1,5 +1,8 @@
 import { isTextElement__, payload__, textEnd__ } from "./HtmlPayload.js";
-import { cachedSearch__, caseless__, collapseSpace__, escapeMarks__, isAsciiAlpha__, readTag__, tagSource__, tagText__, trimHtmlSpace__ } from "./HtmlTags.js";
+import {
+	asciiLower__, attributeValue__, cachedSearch__, caseless__, collapseSpace__, escapeMarks__, isAsciiAlpha__, readTag__, tagSource__, tagText__,
+	trimHtmlSpace__
+} from "./HtmlTags.js";
 import { stripHtmlCommentsOnce__ } from "./MarkupScanners.js";
 import { MARK__, restoreVault__, vault__ } from "./Vault.js";
 
@@ -9,14 +12,19 @@ const END__ = 2;
 const COMMENT__ = 3;
 const BOGUS__ = 4;
 const CDATA__ = 5;
+const COLLAPSE__ = 0;
+const PRESERVE__ = 1;
+const VERBATIM__ = 2;
 
 const GATE__ = new RegExp(`<(?:${["select", "frameset", "noscript", "col"].map(caseless__).join("|")})`, "u");
 const HIDDEN_STATE__ = new RegExp(`<(?:!--|(?:${["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext", "svg", "math"].map(caseless__).join("|")})[\\t\\n\\f\\r />])`, "u");
+const IGNORED_ROOT_GATE__ = new RegExp(`<(?:${["select", "frameset", "col"].map(caseless__).join("|")})`, "u");
+const HTML_STATE_NAMES__ = new Set(["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext"]);
 const BLOCK_NAMES__ = new Set(["pre", "code", "listing"]);
 const VAULTED_ELEMENTS__ = new Set(["script", "style", "textarea"]);
 const FOREIGN_ROOTS__ = new Set(["svg", "math"]);
 const INTEGRATION_POINTS__ = new Set(["foreignobject", "desc", "title", "mi", "mo", "mn", "ms", "mtext", "annotation-xml"]);
-const FOREIGN_RAW__ = new Set(["script", "style"]);
+const VERBATIM_CONTENT__ = new Set(["script", "style", "text", "tspan", "textpath"]);
 const BREAKOUT__ = new Set([
 	"b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em", "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr",
 	"i", "img", "li", "listing", "menu", "meta", "nobr", "ol", "p", "pre", "ruby", "s", "small", "span", "strong", "strike", "sub", "sup", "table", "tt",
@@ -88,32 +96,40 @@ function flush__(state, end)
 
 	if (state.block !== null || end <= textStart) return;
 
-	state.parts.push(state.foreignRaw > 0 ? vault__(state.spans, text.slice(textStart, end)) : escapeMarks__(state, textStart, end));
+	state.parts.push(scope__(state) === COLLAPSE__ ? escapeMarks__(state, textStart, end) : vault__(state.spans, text.slice(textStart, end)));
 }
 
 /**
- * @description Updates the integration point and foreign script or style counts for a foreign element.
+ * @description Returns how the character data of the current foreign element is treated.
  * @param {Object} state - Scanner state.
- * @param {string} name - ASCII-lowercased element name.
- * @param {number} step - 1 when the element opens, -1 when it closes.
- * @return {void}
+ * @return {number} COLLAPSE__, PRESERVE__ (an xml:space scope) or VERBATIM__ (inside text, tspan, textPath, script or
+ * style); COLLAPSE__ outside foreign content.
  */
-function count__(state, name, step)
+function scope__(state)
 {
-	if (INTEGRATION_POINTS__.has(name)) state.integration += step;
-	if (FOREIGN_RAW__.has(name)) state.foreignRaw += step;
+	const { scopes } = state;
+
+	return scopes.length === 0 ? COLLAPSE__ : scopes.at(-1);
 }
 
 /**
  * @description Opens a foreign element.
  * @param {Object} state - Scanner state.
- * @param {string} name - ASCII-lowercased element name.
+ * @param {Object} tag - Its start tag.
  * @return {void}
  */
-function push__(state, name)
+function push__(state, tag)
 {
+	const { name, space } = tag;
+	let scope = scope__(state);
+
+	if (scope === VERBATIM__ || VERBATIM_CONTENT__.has(name)) scope = VERBATIM__;
+	else if (space !== null) scope = attributeValue__(state.text, space) === "default" ? COLLAPSE__ : PRESERVE__;
+
 	state.foreign.push(name);
-	count__(state, name, 1);
+	state.scopes.push(scope);
+
+	if (INTEGRATION_POINTS__.has(name)) state.integration++;
 }
 
 /**
@@ -124,7 +140,27 @@ function push__(state, name)
  */
 function popTo__(state, depth)
 {
-	while (state.foreign.length > depth) count__(state, state.foreign.pop(), -1);
+	while (state.foreign.length > depth)
+	{
+		if (INTEGRATION_POINTS__.has(state.foreign.pop())) state.integration--;
+
+		state.scopes.pop();
+	}
+}
+
+/**
+ * @description Vaults a construct as a tag-like marker, "<" + marker + ">", so whitespace between it and a tag
+ * collapses as it does between two tags.
+ * @param {Object} state - Scanner state.
+ * @param {string} source - The construct as it is to be restored, starting with "<".
+ * @param {boolean} closed - Whether it ends with ">".
+ * @return {string} The marker text.
+ */
+function tagLike__(state, source, closed)
+{
+	const tail = closed ? ">" : "";
+
+	return `<${vault__(state.spans, source.slice(1, source.length - tail.length))}${tail}`;
 }
 
 /**
@@ -143,9 +179,8 @@ function emitElement__(state, tag, content, endTag)
 	if (VAULTED_ELEMENTS__.has(tag.name))
 	{
 		const element = tagSource__(state, tag) + payload__(state.text, tag, content, state.gated) + (endTag === null ? "" : tagSource__(state, endTag));
-		const tail = endTag === null ? "" : ">";
 
-		parts.push(`<${vault__(spans, element.slice(1, element.length - tail.length))}${tail}`);
+		parts.push(tagLike__(state, element, endTag !== null));
 
 		return;
 	}
@@ -237,7 +272,7 @@ function htmlStart__(state, tag)
 	{
 		emitTag__(state, tag, true);
 
-		if (FOREIGN_ROOTS__.has(name) && !tag.selfClosing) push__(state, name);
+		if (FOREIGN_ROOTS__.has(name) && !tag.selfClosing) push__(state, tag);
 
 		advance__(state, tag.end);
 	}
@@ -251,7 +286,7 @@ function htmlStart__(state, tag)
  */
 function foreignStart__(state, tag)
 {
-	if (state.integration > 0) latch__(state, tag.start);
+	if (state.integration > 0 || (state.ignorable && HTML_STATE_NAMES__.has(tag.name))) latch__(state, tag.start);
 	else if (BREAKOUT__.has(tag.name) || (tag.name === "font" && tag.fontBreak))
 	{
 		popTo__(state, 0);
@@ -261,7 +296,7 @@ function foreignStart__(state, tag)
 	{
 		emitTag__(state, tag, false);
 
-		if (!tag.selfClosing) push__(state, tag.name);
+		if (!tag.selfClosing) push__(state, tag);
 
 		advance__(state, tag.end);
 	}
@@ -386,17 +421,19 @@ function comment__(state, open)
 }
 
 /**
- * @description Passes a bogus comment or DOCTYPE through, up to its first ">".
+ * @description Passes a bogus comment through, or vaults a DOCTYPE whole, up to its first ">".
  * @param {Object} state - Scanner state.
  * @param {number} open - Index of its "<".
  * @return {void}
  */
 function bogus__(state, open)
 {
+	const { text } = state;
 	const close = state.nextGt(open + 2);
-	const end = close === -1 ? state.text.length : close + 1;
+	const end = close === -1 ? text.length : close + 1;
+	const doctype = text[open + 1] === "!" && asciiLower__(text.slice(open + 2, open + 9)) === "doctype";
 
-	if (state.block === null) state.parts.push(escapeMarks__(state, open, end));
+	if (state.block === null) state.parts.push(doctype ? tagLike__(state, text.slice(open, end), close !== -1) : escapeMarks__(state, open, end));
 
 	advance__(state, end);
 }
@@ -413,7 +450,7 @@ function cdata__(state, open)
 	const close = text.indexOf("]]>", open + 9);
 	const end = close === -1 ? text.length : close + 3;
 
-	if (state.integration > 0)
+	if (state.integration > 0 || state.ignorable)
 	{
 		latch__(state, open);
 
@@ -462,11 +499,12 @@ function scan__(text)
 		spans: [],
 		parts: [],
 		foreign: [],
+		scopes: [],
 		integration: 0,
-		foreignRaw: 0,
 		block: null,
 		done: false,
 		gated: GATE__.test(text),
+		ignorable: IGNORED_ROOT_GATE__.test(text),
 		index: 0,
 		textStart: 0,
 		nextMark: cachedSearch__(index => text.indexOf(MARK__, index)),

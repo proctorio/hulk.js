@@ -244,6 +244,8 @@ function noteAttribute__(text, tag, part, first)
 		}
 	}
 
+	if (name === "xml:space" && tag.space === null) tag.space = part;
+
 	tag.language = tag.language || name === "language";
 	tag.fontBreak = tag.fontBreak || FONT_BREAKOUT__.has(name);
 }
@@ -271,7 +273,8 @@ function readTag__(text, start, isEnd)
 		type: null,
 		firstType: false,
 		language: false,
-		fontBreak: false
+		fontBreak: false,
+		space: null
 	};
 	let part = tagPart__(text, nameEnd);
 	let first = true;
