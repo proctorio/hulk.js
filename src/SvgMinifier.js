@@ -116,7 +116,7 @@ function xmlChars__(content, start, end)
 		{
 			const low = content.charCodeAt(index + 1);
 
-			if (index + 1 >= end || low < 0xDC00 || low > 0xDFFF) return false;
+			if (!(low >= 0xDC00 && low <= 0xDFFF)) return false;
 			index++;
 		}
 	}
