@@ -17,6 +17,7 @@ const PRESERVE__ = 1;
 const VERBATIM__ = 2;
 
 const GATE__ = new RegExp(`<(?:${["select", "frameset", "noscript", "col"].map(caseless__).join("|")})`, "u");
+const WHITE_SPACE__ = /white.{0,8}space/iu;
 const HIDDEN_STATE__ = new RegExp(`<(?:!--|(?:${["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext", "svg", "math"].map(caseless__).join("|")})[\\t\\n\\f\\r />])`, "u");
 const IGNORED_ROOT_GATE__ = new RegExp(`<(?:${["select", "frameset", "col"].map(caseless__).join("|")})`, "u");
 const HTML_STATE_NAMES__ = new Set(["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext"]);
@@ -24,6 +25,7 @@ const BLOCK_NAMES__ = new Set(["pre", "code", "listing"]);
 const VAULTED_ELEMENTS__ = new Set(["script", "style", "textarea"]);
 const FOREIGN_ROOTS__ = new Set(["svg", "math"]);
 const INTEGRATION_POINTS__ = new Set(["foreignobject", "desc", "title", "mi", "mo", "mn", "ms", "mtext", "annotation-xml"]);
+const SCOPE_MARKERS__ = new Set(["applet", "marquee", "object", "select", "table", "template"]);
 const VERBATIM_CONTENT__ = new Set(["script", "style", "text", "tspan", "textpath", "title", "desc"]);
 const BREAKOUT__ = new Set([
 	"b", "big", "blockquote", "body", "br", "center", "code", "dd", "div", "dl", "dt", "em", "embed", "h1", "h2", "h3", "h4", "h5", "h6", "head", "hr",
@@ -230,7 +232,7 @@ function plaintext__(state, tag)
 }
 
 /**
- * @description Handles a start tag in HTML content.
+ * @description Handles a start tag in HTML content; one that can make the parser ignore the end tag of the open preserved block (an HTML element that stops the scope search for it) leaves the rest of the document as written; those of SVG and MathML are latched in foreign content.
  * @param {Object} state - Scanner state.
  * @param {Object} tag - Complete start tag.
  * @return {void}
@@ -240,7 +242,8 @@ function htmlStart__(state, tag)
 	const { name } = tag;
 	const { block } = state;
 
-	if (BLOCK_NAMES__.has(name))
+	if (block !== null && SCOPE_MARKERS__.has(name)) latch__(state, tag.start);
+	else if (BLOCK_NAMES__.has(name))
 	{
 		if (block === null)
 		{
@@ -394,7 +397,7 @@ function commentEnd__(state, open)
 }
 
 /**
- * @description Passes a comment through for the comment loop.
+ * @description Passes a comment through for the comment loop; one right after a CR is vaulted, since removing it could join that CR and a line feed after it into one line break.
  * @param {Object} state - Scanner state.
  * @param {number} open - Index of its "<!--".
  * @return {void}
@@ -403,7 +406,7 @@ function comment__(state, open)
 {
 	const end = commentEnd__(state, open);
 
-	if (state.block === null) state.parts.push(escapeMarks__(state, open, end));
+	if (state.block === null) state.parts.push(state.text[open - 1] === "\r" ? vault__(state.spans, state.text.slice(open, end)) : escapeMarks__(state, open, end));
 
 	advance__(state, end);
 }
@@ -524,15 +527,19 @@ function scan__(text)
 }
 
 /**
- * @description Minifies HTML content.
+ * @description Minifies HTML content; one that mentions white-space anywhere (a style attribute, a stylesheet, a class
+ * name) keeps the whitespace in its text as written, apart from runs between a ">" and a "<".
  * @param {string} content - Original HTML content.
  * @return {string} Minified output of the given HTML content.
  */
 function minifyHtml__(content)
 {
 	const { parts, spans } = scan__(content);
-	let minified = trimHtmlSpace__(collapseSpace__(parts.join(""), true));
+	const keep = WHITE_SPACE__.test(content);
+	let minified = collapseSpace__(parts.join(""), true, keep);
 	let previous;
+
+	if (!keep) minified = trimHtmlSpace__(minified);
 
 	do
 	{
@@ -540,7 +547,7 @@ function minifyHtml__(content)
 		minified = stripHtmlCommentsOnce__(minified);
 	} while (minified !== previous);
 
-	return restoreVault__(spans, trimHtmlSpace__(minified));
+	return restoreVault__(spans, keep ? minified : trimHtmlSpace__(minified));
 }
 
 export { minifyHtml__ };

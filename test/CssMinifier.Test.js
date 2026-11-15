@@ -305,6 +305,22 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 		]);
 	});
 
+	it("diff r9: a space before \"!\" stays after a \"<\", so no CDO token is made (red on main)", () =>
+	{
+		// "<!--" is the CDO token a stylesheet ignores: from "< !--" the rule after it would be a valid one, not an invalid selector
+		expectCases([
+			["< !-- .item{color:red}", "< !-- .item{color:red}"],
+			["<\n!-- .item{color:red}", "< !-- .item{color:red}"],
+			["<\t!-- .item{color:red}", "< !-- .item{color:red}"],
+			["a < !b{c:d}", "a < !b{c:d}"],
+			["a{b:c < !important}", "a{b:c < !important}"],
+
+			// controls: the space before an "!important" still goes, also from a line break
+			["a{b:c !important}", "a{b:c!important}"],
+			["a{b:c\n!important}", "a{b:c!important}"]
+		]);
+	});
+
 	it("diff r8: the \";\" before a \"}\" that closes no rule block stays (red on main)", () =>
 	{
 		// at the top level a stray "}" starts a rule of its own (an error the parser drops): without the ";" it would

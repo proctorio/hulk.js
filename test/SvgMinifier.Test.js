@@ -849,6 +849,22 @@ describe("SVG style and script payloads", () =>
 		expect(svg(input)).toBe(`${ROOT__}<script>\n<![CDATA[#! text\nconsole.log(1);]]></script></svg>`);
 		expect(svg(`${ROOT__}<script>\n<![CDATA[\n#! text\n]]></script></svg>`)).toBe(`${ROOT__}<script><![CDATA[\n#! text\n]]></script></svg>`);
 	});
+
+	it("diff r9: the whitespace after a payload's CDATA section is part of its text, so it ends inside the section (red on main)", () =>
+	{
+		// the stylesheet text is the section plus what follows it: a string left open by the section ends at that newline
+		// (a bad string, its declaration dropped), where without it the end of the text closes the string (the declaration applies)
+		const open = ".item::before{content:\"text";
+
+		expect(svg(`${ROOT__}<style><![CDATA[${open}]]>\n</style></svg>`)).toBe(`${ROOT__}<style><![CDATA[${open}\n]]></style></svg>`);
+		expect(svg(`${ROOT__}<style><![CDATA[a\\]]>\n</style></svg>`)).toBe(`${ROOT__}<style><![CDATA[a\\\n]]></style></svg>`);
+
+		// controls: a complete payload loses it as before, with or without the section; text without one is as before
+		expect(svg(`${ROOT__}<style><![CDATA[ a { b : c } ]]>\n</style></svg>`)).toBe(`${ROOT__}<style><![CDATA[ a{b:c}]]></style></svg>`);
+		expect(svg(`${ROOT__}<style>\n<![CDATA[a { b : c }]]></style></svg>`)).toBe(`${ROOT__}<style><![CDATA[a{b:c}]]></style></svg>`);
+		expect(svg(`${ROOT__}<style>${open}\n</style></svg>`)).toBe(svg(`${ROOT__}<style>${open}\n</style></svg>`));
+		expect(svg(`${ROOT__}<script><![CDATA[console.log(1) ]]>\n</script></svg>`)).toBe(`${ROOT__}<script><![CDATA[console.log(1)]]></script></svg>`);
+	});
 });
 
 describe("SVG with a DOCTYPE: tag whitespace and comments only", () =>

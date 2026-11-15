@@ -377,7 +377,7 @@ function endTagAt__(content, index, name)
 }
 
 /**
- * @description Minifies a style or script payload that is plain text or a single CDATA section.
+ * @description Minifies a style or script payload that is plain text or a single CDATA section; the whitespace after the section is part of the text the minifier reads, and goes inside it.
  * @param {Object} scan - Scanner state.
  * @param {Object} frame - The element's frame.
  * @param {number} start - Index just after the start tag.
@@ -410,7 +410,7 @@ function scanPayload__(scan, frame, start, minifier)
 
 	if (end === -1 || !endTagAt__(content, end, frame.name)) return start;
 
-	const minified = minifier(content.slice(first + 9, close));
+	const minified = minifier(content.slice(first + 9, close) + content.slice(close + 3, end));
 
 	if (minified.includes("]]>")) return start;
 

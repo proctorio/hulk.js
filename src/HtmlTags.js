@@ -395,7 +395,7 @@ function partText__(state, part, next, edits)
  * @param {boolean} html - Whether the tag is in HTML content rather than foreign content.
  * @return {string} The tag, its values vaulted.
  */
-function tagText__(state, tag, html)
+function tagParts__(state, tag, html)
 {
 	const { text } = state;
 	const edits = {
@@ -427,11 +427,13 @@ function tagText__(state, tag, html)
  * @param {number} start - Start of the run.
  * @param {number} end - End of the run.
  * @param {boolean} betweenTags - Whether a run between ">" and "<" is dropped.
+ * @param {boolean} keep - Whether every other run stays as it is.
  * @return {string} Nothing between tags, one space for a longer run or a line feed or tab, else the run as it is.
  */
-function spaceRun__(text, start, end, betweenTags)
+function spaceRun__(text, start, end, betweenTags, keep)
 {
 	if (betweenTags && text[start - 1] === ">" && text[end] === "<") return "";
+	if (keep) return text.slice(start, end);
 	if (end - start > 1 || text[start] === "\n" || text[start] === "\t") return " ";
 
 	return text[start];
@@ -441,9 +443,10 @@ function spaceRun__(text, start, end, betweenTags)
  * @description Turns line feeds and tabs into spaces and every longer run of HTML whitespace into one space, in one pass.
  * @param {string} text - Vaulted text.
  * @param {boolean} betweenTags - Whether runs between ">" and "<" are dropped as well.
+ * @param {boolean} [keep] - Whether every other run stays as it is.
  * @return {string} The text with its whitespace collapsed.
  */
-function collapseSpace__(text, betweenTags)
+function collapseSpace__(text, betweenTags, keep = false)
 {
 	let output = "";
 	let copied = 0;
@@ -452,7 +455,7 @@ function collapseSpace__(text, betweenTags)
 	while (start !== -1)
 	{
 		const end = skipSpace__(text, start);
-		const run = spaceRun__(text, start, end, betweenTags);
+		const run = spaceRun__(text, start, end, betweenTags, keep);
 
 		if (run !== text.slice(start, end))
 		{
@@ -467,6 +470,18 @@ function collapseSpace__(text, betweenTags)
 }
 
 /**
+ * @description Writes a tag in its minified form with the whitespace inside it collapsed, its values vaulted.
+ * @param {Object} state - Scanner state.
+ * @param {Object} tag - Complete tag from readTag__.
+ * @param {boolean} html - Whether the tag is in HTML content rather than foreign content.
+ * @return {string} The tag.
+ */
+function tagText__(state, tag, html)
+{
+	return collapseSpace__(tagParts__(state, tag, html), false);
+}
+
+/**
  * @description Writes a tag in its minified form with the stream's whitespace rules applied and its values restored, for
  * an element that is vaulted whole.
  * @param {Object} state - Scanner state.
@@ -475,7 +490,7 @@ function collapseSpace__(text, betweenTags)
  */
 function tagSource__(state, tag)
 {
-	return restoreVault__(state.spans, collapseSpace__(tagText__(state, tag, true), false));
+	return restoreVault__(state.spans, tagText__(state, tag, true));
 }
 
 export {

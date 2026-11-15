@@ -987,6 +987,70 @@ describe("HTML diff review round 2", () =>
 	});
 });
 
+describe("HTML diff review round 9", () =>
+{
+	it("diff r9: a comment right after CR stays, since dropping it would join that CR and a LF after it into one line break (red on main)", () =>
+	{
+		// parse5 reads "a\r<!-- x -->\nb" in a preserved SVG text as "a\n\nb" and "a\r\nb" as "a\nb"
+		const witness = "<svg xml:space=\"preserve\"><text>a\r<!-- text -->\nb</text></svg>";
+
+		expect(html(witness)).toBe(witness);
+		expect(html("<svg xml:space=\"preserve\"><text>a\r<!--a--><!--b-->\nb</text></svg>")).toBe("<svg xml:space=\"preserve\"><text>a\r<!--a-->\nb</text></svg>");
+
+		// controls: after LF, and in text that collapses, a comment still goes
+		expect(html("<svg xml:space=\"preserve\"><text>a\n<!-- text -->\nb</text></svg>")).toBe("<svg xml:space=\"preserve\"><text>a\n\nb</text></svg>");
+		expect(html("<p>a\n<!-- x -->\nb</p>")).toBe("<p>a  b</p>");
+	});
+
+	it("diff r9: an element that stops the scope search for the end tag leaves the rest as written (red on main)", () =>
+	{
+		// the parser ignores a </pre> (or </code>, </listing>) while a table, select, template, object, applet, marquee or an
+		// SVG or MathML integration point is open inside it: the text after the real end tag is still in the block (the
+		// SVG and MathML rows were already kept as written by the foreign-content latch: red on main only)
+		const kept = [
+			"<pre><table></pre></table>a  b</pre>",
+			"<pre><select></pre></select>a  b</pre>",
+			"<pre><template></pre></template>a  b</pre>",
+			"<pre><object></pre></object>a  b</pre>",
+			"<pre><applet></pre></applet>a  b</pre>",
+			"<pre><marquee></pre></marquee>a  b</pre>",
+			"<pre><svg><title></pre></title></svg>a  b</pre>",
+			"<pre><math><mi></pre></mi></math>a  b</pre>",
+			"<code><table></code></table>a  b</code>",
+			"<listing><table></listing></table>a  b</listing>"
+		];
+
+		for (const input of kept) expect(html(input)).toBe(input);
+
+		// every SVG and MathML integration point, in each block: the foreign-content latch already keeps these
+		for (const block of ["pre", "code", "listing"])
+		{
+			for (const name of ["foreignObject", "desc", "title"]) expect(html(`<${block}><svg><${name}></${block}></${name}></svg>a  b</${block}>`)).toBe(`<${block}><svg><${name}></${block}></${name}></svg>a  b</${block}>`);
+			for (const name of ["mi", "mo", "mn", "ms", "mtext", "annotation-xml"]) expect(html(`<${block}><math><${name}></${block}></${name}></math>a  b</${block}>`)).toBe(`<${block}><math><${name}></${block}></${name}></math>a  b</${block}>`);
+		}
+
+		// what comes before the block is minified as usual, what comes after it is not
+		expect(html("<p>x  y</p>\n<pre><table></pre></table>a  b</pre>\n<p>c  d</p>")).toBe("<p>x y</p> <pre><table></pre></table>a  b</pre>\n<p>c  d</p>");
+
+		// controls: a pre without one still ends at its first end tag, with the text after it collapsing
+		expect(html("<pre><b>x</b></pre>  <p>a  b</p>")).toBe("<pre><b>x</b></pre> <p>a b</p>");
+		expect(html("<pre><svg><g></g></svg></pre>\n<p>a  b</p>")).toBe("<pre><svg><g></g></svg></pre> <p>a b</p>");
+	});
+
+	it("diff r9: a document that mentions white-space keeps its text whitespace, apart from runs between tags (red on main)", () =>
+	{
+		// a style attribute, a stylesheet in the document or a class name can make any element keep its spaces and lines
+		expect(html("<div style=\"white-space:pre\">a  b</div>")).toBe("<div style=\"white-space:pre\">a  b</div>");
+		expect(html("<style>.text{white-space:pre}</style><div class=\"text\">a  b</div>\n<p> c   d </p>\n")).toBe("<style>.text{white-space:pre}</style><div class=\"text\">a  b</div><p> c   d </p>\n");
+		expect(html("<div class=\"whitespace-pre-line\"> a\n b </div> <i>x</i>")).toBe("<div class=\"whitespace-pre-line\"> a\n b </div><i>x</i>");
+		expect(html("<div style=\"WHITE\\2d SPACE:pre\">a\r\n\tb</div>")).toBe("<div style=\"WHITE\\2d SPACE:pre\">a\r\n\tb</div>");
+
+		// controls: no mention, no change; tags still lose the spaces inside them
+		expect(html("<p>a  b</p>\n<p>c\n\td</p>\n")).toBe("<p>a b</p><p>c d</p>");
+		expect(html("<div  style=\"white-space:pre\"  >a  b</div>")).toBe("<div style=\"white-space:pre\">a  b</div>");
+	});
+});
+
 describe("HTML stays linear (each input over 500k characters, with one above U+00FF)", { timeout: TIMEOUT_MS__ }, () =>
 {
 	// [name, input, expected]
