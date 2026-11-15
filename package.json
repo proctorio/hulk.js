@@ -60,7 +60,7 @@
   "devDependencies": {
     "@proctorio/eslint-config": "4.0.20",
     "@vitest/coverage-v8": "5.1.0",
-    "eslint": "10.10.0",
+    "eslint": "10.14.0",
     "vitest": "5.1.0"
   },
   "overrides": {
