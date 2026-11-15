@@ -1051,6 +1051,85 @@ describe("HTML diff review round 9", () =>
 	});
 });
 
+describe("HTML diff review round 10", () =>
+{
+	it("diff r10: a style attribute that spells white-space with a character reference or an escape keeps the document's text whitespace (red on 22f8e71)", () =>
+	{
+		// "&#x0002d;" is "-" and "\65" is "e": neither is the text "white-space", and each can name the property
+		const kept = [
+			"<div style=\"white&#x0002d;space:pre\">a  b</div>",
+			"<div style=\"WHITE-SPACE:pre\">a  b</div>",
+			"<div style=\"whit\\65-space:pre\">a  b</div>",
+			"<div style=\"white\\2d\nspace:pre\">a  b</div>",
+			"<div style='whit\\65-space:pre'>a  b</div>",
+			"<div style=whit\\65-space:pre>a  b</div>",
+			"<div STYLE=\"whit\\65-space:pre\">a  b</div>",
+			"<p>a  b</p><div style=\"w\\68ite-space:pre\">c  d</div>"
+		];
+
+		for (const input of kept) expect(html(input)).toBe(input);
+
+		// controls: a style attribute with neither, a reference or a backslash in another attribute, a backslash outside style
+		expect(html("<div style=\"color:red\">a  b</div>")).toBe("<div style=\"color:red\">a b</div>");
+		expect(html("<div style title=\"a&amp;b\">a  b</div>")).toBe("<div style title=\"a&amp;b\">a b</div>");
+		expect(html("<a title=\"a&amp;b\" data-a=\"x\\y z\">a  b</a>")).toBe("<a title=\"a&amp;b\" data-a=\"x\\y z\">a b</a>");
+		expect(html("<p>a\\b  c &amp; d</p>")).toBe("<p>a\\b c &amp; d</p>");
+	});
+
+	it("diff r10: a style element that holds a backslash keeps the document's text whitespace, in HTML and in foreign content (red on 22f8e71)", () =>
+	{
+		const kept = [
+			"<style>.a{whit\\65-space:pre}</style><div class=\"a\">x  y</div>",
+			"<STYLE>.a{whit\\65-space:pre}</STYLE><div class=\"a\">x  y</div>",
+			"<div class=\"a\">x  y</div><style>.a{whit\\65-space:pre}</style>",
+			"<svg><style>.a{whit\\65-space:pre}</style></svg><div class=\"a\">x  y</div>",
+			"<style>.b{x:y}</style><style>.a{whit\\65-space:pre}</style><div class=\"a\">x  y</div>",
+			"<style>.a{x:y}</styles><style>.a{whit\\65-space:pre}</style><div>x  y</div>",
+			"<style>.a{x:y}</styles>.a{whit\\65-space:pre}</style><div>x  y</div>",
+			"<div class=\"a\">x  y</div><style>.a{whit\\65-space:pre}",
+			"<style title=\"</style >\">.a{whit\\65-space:pre}</style><div>x  y</div>"
+		];
+
+		for (const input of kept) expect(html(input)).toBe(input);
+
+		expect(html("<style >.a{whit\\65-space:pre}</style><div class=\"a\">x  y</div>")).toBe("<style>.a{whit\\65-space:pre}</style><div class=\"a\">x  y</div>");
+
+		// controls: no backslash, or only after the element's end tag, is as before
+		expect(html("<style>.a{color:red}</style><div>x  y</div>")).toBe("<style>.a{color:red}</style><div>x y</div>");
+		expect(html("<style>.a{color:red}</style><div>x  y\\z</div>")).toBe("<style>.a{color:red}</style><div>x y\\z</div>");
+		expect(html("<style>.a{color:red}</style>\\<style>.b{color:red}</style><div>x  y</div>")).toBe("<style>.a{color:red}</style>\\<style>.b{color:red}</style><div>x y</div>");
+		expect(html("<svg><style>.a{color:red}</style></svg><div>x  y\\z</div>")).toBe("<svg><style>.a{color:red}</style></svg><div>x y\\z</div>");
+		expect(html("<style>.a{color:red}</style/><div>x  y\\z</div>")).toBe("<style>.a{color:red}</style/><div>x y\\z</div>");
+		expect(html("<style>.a{color:red}</style\n><div>x  y\\z</div>")).toBe("<style>.a{color:red}</style><div>x y\\z</div>");
+		expect(html("<STYLE>.a{color:red}</STYLE><div>x  y\\z</div>")).toBe("<STYLE>.a{color:red}</STYLE><div>x y\\z</div>");
+		expect(html("<style data-x=\"a\\b\">.a{color:red}</style><div>x  y</div>")).toBe("<style data-x=\"a\\b\">.a{color:red}</style><div>x y</div>");
+	});
+
+	it("diff r10: text after the scan stopped is not read, so a style in it that could spell white-space keeps the document's whitespace (red on 22f8e71)", () =>
+	{
+		// the parser's state after "</pre>" is not known here: the rest of the document is kept as written, styles included
+		const stop = "<pre><table></pre></table>";
+		const kept = [
+			`<p>a  b</p>${stop}<style>.a{whit\\65-space:pre}</style>`,
+			`<p>a  b</p>${stop}<div style="whit\\65-space:pre">c  d</div>`,
+			`<p>a  b</p>${stop}<div style="white&#x2d;space:pre">c  d</div>`,
+			"<p>a  b</p><pre><svg><title></pre></title></svg><STYLE>.a{whit\\65-space:pre}</STYLE>",
+			"<p>a  b</p><div style=\"whit\\65-space:pre\" <p>c  d</p>",
+			`<p>a  b</p>${stop}<div STYLE="whit\\65-space:pre">c  d</div>`,
+			`<p>a  b</p>${stop}<div style\t="whit\\65-space:pre">c  d</div>`,
+			`<p>a  b</p>${stop}<style media="all">.a{whit\\65-space:pre}</style>`,
+			`<p>a  b</p>${stop}<p>c  d</p><style>.a{color:red}</style>\\`
+		];
+
+		for (const input of kept) expect(html(input)).toBe(input);
+
+		// controls: a rest with no style that holds a backslash or a "&", or a style with neither, is as before
+		expect(html(`<p>a  b</p>${stop}<style>.a{color:red}</style>`)).toBe(`<p>a b</p>${stop}<style>.a{color:red}</style>`);
+		expect(html(`<p>a  b</p>${stop}<div style="color:red">c  d</div>`)).toBe(`<p>a b</p>${stop}<div style="color:red">c  d</div>`);
+		expect(html(`<p>a  b</p>${stop}<p>c\\d &amp; e</p>`)).toBe(`<p>a b</p>${stop}<p>c\\d &amp; e</p>`);
+	});
+});
+
 describe("HTML stays linear (each input over 500k characters, with one above U+00FF)", { timeout: TIMEOUT_MS__ }, () =>
 {
 	// [name, input, expected]

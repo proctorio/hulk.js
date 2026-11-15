@@ -22,7 +22,9 @@ function _minifiJson__(content)
 
 /**
  * @description Function that minifies content of HTML, CSS, SVG, JS, and JSON files. A
- * leading UTF-8 BOM (U+FEFF) is always stripped before minification.
+ * leading UTF-8 BOM (U+FEFF) is always stripped before minification, and a result that would start
+ * with one that the stripped content did not (a minifier removed what stood before it) is not used:
+ * the stripped content is returned as it was.
  * @param {string} content - Content to minify.
  * @param {string} extension - Type of file (html, css, svg, js, json).
  * @return {string} Return minified content.
@@ -59,7 +61,7 @@ const minify__ = (content, extension) =>
 			console.warn("Extension provided is not supported. Returning same content.");
 	}
 	
-	return minifiedContent;
+	return minifiedContent.charCodeAt(0) === 0xFEFF && cleanContent.charCodeAt(0) !== 0xFEFF ? cleanContent : minifiedContent;
 };
 
 export default minify__;

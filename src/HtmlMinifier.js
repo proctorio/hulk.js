@@ -1,7 +1,7 @@
 import { isTextElement__, payload__, textEnd__ } from "./HtmlPayload.js";
 import {
-	asciiLower__, attributeValue__, cachedSearch__, caseless__, collapseSpace__, escapeMarks__, isAsciiAlpha__, readTag__, tagSource__, tagText__,
-	trimHtmlSpace__
+	ESCAPES__, asciiLower__, attributeValue__, cachedSearch__, caseless__, collapseSpace__, escapeMarks__, isAsciiAlpha__, readTag__, searchFrom__,
+	tagSource__, tagText__, trimHtmlSpace__
 } from "./HtmlTags.js";
 import { stripHtmlCommentsOnce__ } from "./MarkupScanners.js";
 import { MARK__, restoreVault__, vault__ } from "./Vault.js";
@@ -17,7 +17,10 @@ const PRESERVE__ = 1;
 const VERBATIM__ = 2;
 
 const GATE__ = new RegExp(`<(?:${["select", "frameset", "noscript", "col"].map(caseless__).join("|")})`, "u");
-const WHITE_SPACE__ = /white.{0,8}space/iu;
+const WHITE_SPACE__ = /white-?space/iu;
+const STYLE_END__ = new RegExp(`</${caseless__("style")}[\\t\\n\\f\\r />]`, "gu");
+const STYLE_ATTRIBUTE__ = /style[\t\n\f\r ]*=/iu;
+const STYLE_ELEMENT__ = /<style[\t\n\f\r />]/iu;
 const HIDDEN_STATE__ = new RegExp(`<(?:!--|(?:${["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext", "svg", "math"].map(caseless__).join("|")})[\\t\\n\\f\\r />])`, "u");
 const IGNORED_ROOT_GATE__ = new RegExp(`<(?:${["select", "frameset", "col"].map(caseless__).join("|")})`, "u");
 const HTML_STATE_NAMES__ = new Set(["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext"]);
@@ -70,6 +73,16 @@ function emitTag__(state, tag, html)
 }
 
 /**
+ * @description Tells whether text the scan will not read could spell white-space in a style, with a character reference or an escape.
+ * @param {string} rest - The unscanned text.
+ * @return {boolean} True when the text has a style attribute and a "&" or a backslash, or a style element and a backslash.
+ */
+function mayHoldEscape__(rest)
+{
+	return (STYLE_ATTRIBUTE__.test(rest) && ESCAPES__.test(rest)) || (STYLE_ELEMENT__.test(rest) && rest.includes("\\"));
+}
+
+/**
  * @description Vaults the rest of the document verbatim and ends the scan, from a tag after which the parser's state is
  * not certain, or from a tag that runs to the end of the text.
  * @param {Object} state - Scanner state.
@@ -79,8 +92,11 @@ function emitTag__(state, tag, html)
 function latch__(state, open)
 {
 	const { text, spans, block } = state;
+	const rest = text.slice(block === null ? open : block.start);
 
-	state.parts.push(block === null ? `<${vault__(spans, text.slice(open + 1))}` : vault__(spans, text.slice(block.start)));
+	if (mayHoldEscape__(rest)) state.keep = true;
+
+	state.parts.push(block === null ? `<${vault__(spans, rest.slice(1))}` : vault__(spans, rest));
 	state.block = null;
 	state.done = true;
 	advance__(state, text.length);
@@ -356,9 +372,25 @@ function startTag__(state, open)
 {
 	const tag = readTag__(state.text, open, false);
 
+	if (tag.styled || (tag.name === "style" && styleHoldsEscape__(state, tag))) state.keep = true;
+
 	if (tag.end === -1) latch__(state, open);
 	else if (state.foreign.length > 0) foreignStart__(state, tag);
 	else htmlStart__(state, tag);
+}
+
+/**
+ * @description Tells whether a style element's content holds a backslash, which can start an escape in a property name.
+ * @param {Object} state - Scanner state.
+ * @param {Object} tag - The style start tag.
+ * @return {boolean} True when a backslash lies between the tag and the next "</style" (or the end of the text).
+ */
+function styleHoldsEscape__(state, tag)
+{
+	const slash = state.nextBackslash(tag.end);
+	const end = state.nextStyleEnd(tag.end);
+
+	return slash !== -1 && (end === -1 || slash < end);
 }
 
 /**
@@ -495,6 +527,7 @@ function scan__(text)
 		integration: 0,
 		block: null,
 		done: false,
+		keep: false,
 		gated: GATE__.test(text),
 		ignorable: IGNORED_ROOT_GATE__.test(text),
 		index: 0,
@@ -502,7 +535,9 @@ function scan__(text)
 		nextMark: cachedSearch__(index => text.indexOf(MARK__, index)),
 		nextClose: cachedSearch__(index => text.indexOf("-->", index)),
 		nextBang: cachedSearch__(index => text.indexOf("--!>", index)),
-		nextGt: cachedSearch__(index => text.indexOf(">", index))
+		nextGt: cachedSearch__(index => text.indexOf(">", index)),
+		nextBackslash: cachedSearch__(index => text.indexOf("\\", index)),
+		nextStyleEnd: cachedSearch__(index => searchFrom__(STYLE_END__, text, index))
 	};
 
 	while (!state.done)
@@ -528,14 +563,15 @@ function scan__(text)
 
 /**
  * @description Minifies HTML content; one that mentions white-space anywhere (a style attribute, a stylesheet, a class
- * name) keeps the whitespace in its text as written, apart from runs between a ">" and a "<".
+ * name), or spells it with a character reference or an escape in a style attribute or element, keeps the whitespace in
+ * its text as written, apart from runs between a ">" and a "<".
  * @param {string} content - Original HTML content.
  * @return {string} Minified output of the given HTML content.
  */
 function minifyHtml__(content)
 {
-	const { parts, spans } = scan__(content);
-	const keep = WHITE_SPACE__.test(content);
+	const { parts, spans, keep: scanned } = scan__(content);
+	const keep = scanned || WHITE_SPACE__.test(content);
 	let minified = collapseSpace__(parts.join(""), true, keep);
 	let previous;
 

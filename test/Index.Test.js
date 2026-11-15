@@ -630,6 +630,29 @@ newlines</pre>
 		expect(minify__("", "css")).toBe("");
 	});
 
+	it("diff r10: a result that would start with U+FEFF, which the stripped content did not, is not used (red on 22f8e71)", () =>
+	{
+		// a U+FEFF after what a minifier removes would become a byte order mark: the minified copy would lose its first rule or tag
+		for (const [extension, content] of [
+			["css", "\n\uFEFF.item{color:red}"],
+			["css", "/* c */\uFEFF.item { color : red }"],
+			["html", "\n\uFEFF<p>x</p>"],
+			["html", "<!-- c -->\uFEFF<p>x</p>"],
+			["svg", "<!-- c -->\uFEFF<svg><rect/></svg>"]
+		])
+		{
+			expect(minify__(content, extension)).toBe(content);
+			expect(minify__(`\uFEFF${content}`, extension)).toBe(content);
+		}
+
+		// controls: a stripped BOM leaves the result as before, and a U+FEFF that is not first stays where it is
+		expect(minify__("\uFEFF.item { color : red }", "css")).toBe(".item{color:red}");
+		expect(minify__(".item { content : \"\uFEFF\" }", "css")).toBe(".item{content:\"\uFEFF\"}");
+		expect(minify__("\n\uFEFF\uFEFF.item { color : red }", "css")).toBe("\n\uFEFF\uFEFF.item { color : red }");
+		expect(minify__("\uFEFF\uFEFF.item { color : red }", "css")).toBe("\uFEFF.item{color:red}");
+		expect(minify__("\n\uFEFFvar a = 1;", "js")).toBe("var a = 1;");
+	});
+
 	it("minify HTML fully minifies an img's self-closing trailing src", () =>
 	{
 		// img's self-closing "/" is dropped first, so by the time the src quotes are

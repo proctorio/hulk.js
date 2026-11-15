@@ -410,6 +410,8 @@ function scanPayload__(scan, frame, start, minifier)
 
 	if (end === -1 || !endTagAt__(content, end, frame.name)) return start;
 
+	if (content[close - 1] === "\r" && content[close + 3] === "\n") return start;
+
 	const minified = minifier(content.slice(first + 9, close) + content.slice(close + 3, end));
 
 	if (minified.includes("]]>")) return start;

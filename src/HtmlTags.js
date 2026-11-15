@@ -6,6 +6,7 @@ const CLOSE__ = 3;
 
 const VOID_NAMES__ = ["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"];
 const FONT_BREAKOUT__ = new Set(["color", "face", "size"]);
+const ESCAPES__ = /[&\\]/u;
 
 const WORD_CHAR__ = /[\wſK]/u;
 const UPPER_ASCII__ = /[A-Z]/gu;
@@ -220,7 +221,7 @@ function tagPart__(text, from)
 }
 
 /**
- * @description Records the attribute facts the minifier needs.
+ * @description Records the attribute facts the minifier needs, among them a style attribute that holds a character reference or a CSS escape, which can spell a property name.
  * @param {string} text - HTML.
  * @param {Object} tag - Tag being read.
  * @param {Object} part - Attribute part.
@@ -240,6 +241,7 @@ function noteAttribute__(text, tag, part)
 	if (name === "xml:space" && tag.space === null) tag.space = part;
 
 	tag.language = tag.language || name === "language";
+	tag.styled = tag.styled || (name === "style" && part.equals !== -1 && ESCAPES__.test(text.slice(part.value, part.end)));
 	tag.fontBreak = tag.fontBreak || FONT_BREAKOUT__.has(name);
 }
 
@@ -266,6 +268,7 @@ function readTag__(text, start, isEnd)
 		type: null,
 		language: false,
 		fontBreak: false,
+		styled: false,
 		space: null
 	};
 	let part = tagPart__(text, nameEnd);
@@ -494,6 +497,7 @@ function tagSource__(state, tag)
 }
 
 export {
+	ESCAPES__,
 	asciiLower__,
 	attributeValue__,
 	cachedSearch__,

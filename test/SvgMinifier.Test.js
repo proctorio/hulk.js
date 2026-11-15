@@ -862,8 +862,28 @@ describe("SVG style and script payloads", () =>
 		// controls: a complete payload loses it as before, with or without the section; text without one is as before
 		expect(svg(`${ROOT__}<style><![CDATA[ a { b : c } ]]>\n</style></svg>`)).toBe(`${ROOT__}<style><![CDATA[ a{b:c}]]></style></svg>`);
 		expect(svg(`${ROOT__}<style>\n<![CDATA[a { b : c }]]></style></svg>`)).toBe(`${ROOT__}<style><![CDATA[a{b:c}]]></style></svg>`);
-		expect(svg(`${ROOT__}<style>${open}\n</style></svg>`)).toBe(svg(`${ROOT__}<style>${open}\n</style></svg>`));
+		expect(svg(`${ROOT__}<style>${open}\n</style></svg>`)).toBe(`${ROOT__}<style>${open}\n</style></svg>`);
 		expect(svg(`${ROOT__}<script><![CDATA[console.log(1) ]]>\n</script></svg>`)).toBe(`${ROOT__}<script><![CDATA[console.log(1)]]></script></svg>`);
+	});
+});
+
+describe("SVG diff review round 10", () =>
+{
+	it("diff r10: a CDATA section that ends in CR, with a LF right after it, stays as written, since the minifier would read one CRLF line break where there were two (red on 22f8e71)", () =>
+	{
+		// the section's CR and the LF after it are two line breaks; joined, they are one
+		const kept = `${ROOT__}<style><![CDATA[a\\\r]]>\n</style></svg>`;
+
+		expect(svg(kept)).toBe(kept);
+
+		const script = `${ROOT__}<script><![CDATA[var a = "b\\\r]]>\n</script></svg>`;
+
+		expect(svg(script)).toBe(script);
+
+		// controls: a LF at the end of the section, or a CR after it, join no two line breaks
+		expect(svg(`${ROOT__}<style><![CDATA[a\\\n]]>\n</style></svg>`)).toBe(`${ROOT__}<style><![CDATA[a\\\n]]></style></svg>`);
+		expect(svg(`${ROOT__}<style><![CDATA[a\\\r]]>\r</style></svg>`)).toBe(`${ROOT__}<style><![CDATA[a\\\r]]></style></svg>`);
+		expect(svg(`${ROOT__}<style><![CDATA[a\\\r]]> \n</style></svg>`)).toBe(`${ROOT__}<style><![CDATA[a\\\r ]]></style></svg>`);
 	});
 });
 
