@@ -44,7 +44,7 @@
   },
   "homepage": "https://github.com/proctorio/hulk.js#readme",
   "scripts": {
-    "build": "node --input-type=module -e \"import fs from 'node:fs'; import minify from './src/index.js'; fs.cpSync('src', 'lib', { recursive: true }); fs.writeFileSync('lib/JsComments.js', minify(fs.readFileSync('src/JsComments.js', 'utf8'), 'js'));\"",
+    "build": "node scripts/Build.js",
     "test": "vitest run --coverage",
     "lint": "eslint --fix src/ test/",
     "lint:check": "eslint src/ test/",
