@@ -397,6 +397,7 @@ function createState__(content, spans)
 		verbatimBase: 0,
 		verbatimValue: false,
 		verbatimLast: 0,
+		valueToken: false,
 		valuePending: false,
 		segmentStart: 0,
 		colon: false,
@@ -555,6 +556,7 @@ function startVerbatim__(state, value)
 	state.verbatimBase = state.stack.length;
 	state.verbatimValue = value;
 	state.verbatimLast = state.index;
+	state.valueToken = false;
 }
 
 /**
@@ -570,14 +572,17 @@ function endGroup__(state)
 }
 
 /**
- * @description Ends a verbatim declaration value after its last token; the whitespace after it is scanned again.
+ * @description Ends a verbatim declaration value after its last token, the whitespace after it scanned again; a value of comments alone keeps one space where it had whitespace.
  * @param {Object} state - Scanner state.
  */
 function endValue__(state)
 {
+	const { content, verbatim, index } = state;
 	const end = state.verbatimLast;
+	const lead = !state.valueToken && isWhitespaceCode__(content.charCodeAt(verbatim - 1)) ? " " : "";
+	const trail = !state.valueToken && end < index ? " " : "";
 
-	state.parts.push(vault__(state.spans, state.content.slice(state.verbatim, end)));
+	state.parts.push(vault__(state.spans, `${lead}${content.slice(verbatim, end)}${trail}`));
 	state.verbatim = -1;
 	state.copied = end;
 	state.index = end;
@@ -764,7 +769,7 @@ function closes__(top, code)
 }
 
 /**
- * @description Handles ")", "]" and "}".
+ * @description Handles ")", "]" and "}"; a "}" that closes no rule block is vaulted, so the ";" before it stays.
  * @param {Object} state - Scanner state.
  * @param {number} code - The closer.
  */
@@ -781,8 +786,17 @@ function close__(state, code)
 
 	const ends = code === 0x7D && state.parens === 0;
 
-	if (closes__(state.top, code)) pop__(state);
-	state.index++;
+	const closes = closes__(state.top, code);
+
+	if (!inVerbatim && code === 0x7D && !closes)
+	{
+		emitVault__(state, state.index, state.index + 1);
+	}
+	else
+	{
+		if (closes) pop__(state);
+		state.index++;
+	}
 	state.last = state.content[state.index - 1];
 
 	if (inVerbatim)
@@ -1128,7 +1142,11 @@ function step__(state)
 	if (comment) comment__(state);
 	else token__(state, code);
 
-	if (valueMode && state.verbatim !== -1 && code !== 0x20 && code !== 0x0C) state.verbatimLast = state.index;
+	if (valueMode && state.verbatim !== -1 && code !== 0x20 && code !== 0x0C)
+	{
+		state.verbatimLast = state.index;
+		if (!comment) state.valueToken = true;
+	}
 }
 
 /**

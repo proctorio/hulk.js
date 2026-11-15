@@ -708,6 +708,21 @@ describe("SVG character data", () =>
 		// control: comments at the start, after ">" and after whitespace go
 		expect(svg(`<!--a-->${ROOT__}<text><!--b-->x <!--c-->y</text>\n<!--d--></svg>`)).toBe(`${ROOT__}<text>x y</text></svg>`);
 	});
+
+	it("diff r8: a comment right after CR stays, since dropping it would join that CR and a LF after it into one line break (red on main)", () =>
+	{
+		// XML reads CR LF as one line break: "a\r<!-- text -->\nb" holds two, "a\r\nb" one. A later comment in the chain
+		// still goes, the first one keeps CR and LF apart.
+		const preserve = `<svg xmlns="${SVG_NS__}" xml:space="preserve"><text>a\r<!-- text -->\nb</text></svg>`;
+
+		expect(svg(preserve)).toBe(preserve);
+		expect(svg(`${ROOT__}<text>a\r<!--a--><!--b-->\nb</text></svg>`)).toBe(`${ROOT__}<text>a\r<!--a-->\nb</text></svg>`);
+		expect(svg(`${ROOT__}<text>a\r<!--a--> <!--b-->\nb</text></svg>`)).toBe(`${ROOT__}<text>a\r<!--a--> \nb</text></svg>`);
+
+		// control: a comment after LF, or after CR LF, still goes
+		expect(svg(`${ROOT__}<text>a\n<!--x-->\nb</text></svg>`)).toBe(`${ROOT__}<text>a\n\nb</text></svg>`);
+		expect(svg(`${ROOT__}<text>a\r\n<!--x-->\r\nb</text></svg>`)).toBe(`${ROOT__}<text>a\r\n\r\nb</text></svg>`);
+	});
 });
 
 describe("SVG style and script payloads", () =>

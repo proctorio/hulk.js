@@ -290,12 +290,11 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 	{
 		// only the exact bytes '@charset "label";' at the very start declare the encoding; anything else is an ignored
 		// rule, so trimming the whitespace or comment before it, or a comment inside it, would switch how a standalone
-		// file is decoded (and dropping its ";" would undo one)
+		// file is decoded (diff r8 below keeps its ";")
 		expectCases([
 			["\n@charset \"iso-8859-1\";\na{b:c}", "\n@charset \"iso-8859-1\";\na{b:c}"],
 			["/* x */@charset \"iso-8859-1\";\na { b : c }", "/* x */@charset \"iso-8859-1\";\na { b : c }"],
 			["@charset \"iso-8859-1\"/* text */;\na{content:\"\u00E9\"}", "@charset \"iso-8859-1\"/* text */;\na{content:\"\u00E9\"}"],
-			["@charset \"iso-8859-1\";}\na { b : c }", "@charset \"iso-8859-1\";}\na { b : c }"],
 			["@charset \"iso-8859-1\" ;\na { b : c }", "@charset \"iso-8859-1\" ;a{b:c}"],
 
 			// controls: a declaration already at the start, or a rule that is no declaration (any case, single quotes), is
@@ -303,6 +302,26 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 			["@charset \"iso-8859-1\";\na { b : c }", "@charset \"iso-8859-1\";a{b:c}"],
 			["\n@CHARSET \"iso-8859-1\";\na { b : c }", "@CHARSET \"iso-8859-1\";a{b:c}"],
 			["\n@charset 'iso-8859-1';\na { b : c }", "@charset 'iso-8859-1';a{b:c}"]
+		]);
+	});
+
+	it("diff r8: the \";\" before a \"}\" that closes no rule block stays (red on main)", () =>
+	{
+		// at the top level a stray "}" starts a rule of its own (an error the parser drops): without the ";" it would
+		// join the at-rule's prelude instead, and the import or encoding declaration would go with it; inside brackets
+		// the "}" is part of the value
+		expectCases([
+			["@import \"text.css\";}", "@import \"text.css\";}"],
+			["@import \"text.css\"; }\na { b : c }", "@import \"text.css\";}a{b:c}"],
+			["@charset \"iso-8859-1\";}\na { b : c }", "@charset \"iso-8859-1\";}a{b:c}"],
+			["a{b:f(;})}", "a{b:f(;})}"],
+			["a{b:[;}]}", "a{b:[;}]}"],
+
+			// controls: the ";" before a "}" that closes a block still goes, at any depth, also before a stray "}"; a stray
+			// ")" is no block end and is read as before
+			["a{b:c;}}", "a{b:c}}"],
+			["@media x{a{b:c;}}", "@media x{a{b:c}}"],
+			["a{)b:#aabbcc}", "a{)b:#abc}"]
 		]);
 	});
 
@@ -538,6 +557,25 @@ describe("CSS custom-property values stay as written (deviation from PLAN.md, se
 			["a{--x:\n", "a{--x: "],
 			["a{--x: ", "a{--x: "],
 			["a{--x:", "a{--x:"]
+		]);
+	});
+
+	it("diff r8: a custom property of comments alone keeps one space where it had whitespace (red on main)", () =>
+	{
+		// a comment is no token: with the whitespace next to it gone the value would be empty, which browsers before the
+		// spec's 2022 change reject, as for the whitespace-only value above
+		expectCases([
+			["a{--x:/* text */\n}", "a{--x:/* text */ }"],
+			["a{--x:/* text */\n", "a{--x:/* text */ "],
+			["a{--x:\n/* text */}", "a{--x: /* text */}"],
+			["a{--x: /* text */;b:c}", "a{--x: /* text */;b:c}"],
+			["a{--x: /* text", "a{--x: /* text"],
+			["a{--y:red;--x:/* text */\n}", "a{--y:red;--x:/* text */ }"],
+
+			// controls: comments with no whitespace next to them stay as written, a value with a token loses it as before
+			["a{--x:/* a *//* b */}", "a{--x:/* a *//* b */}"],
+			["a{--x:/* a */ /* b */}", "a{--x:/* a */ /* b */}"],
+			["a{--x:/* c */ red }", "a{--x:/* c */ red}"]
 		]);
 	});
 });

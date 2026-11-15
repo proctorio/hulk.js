@@ -10,7 +10,7 @@ const XHTML_NAMESPACE__ = "http://www.w3.org/1999/xhtml";
 const VERBATIM_CONTENT__ = new Set(["text", "tspan", "textPath", "title", "desc", "foreignObject", "script", "style"]);
 const JS_TYPES__ = new Set(["text/javascript", "application/javascript", "text/ecmascript", "application/ecmascript"]);
 const ASCII_SPACE__ = "\t\n\f\r ";
-const COMMENT_DROPPABLE_AFTER__ = ">\t\n\r ";
+const COMMENT_DROPPABLE_AFTER__ = ">\t\n ";
 const INERT_ELEMENTS__ = new Set([
 	"svg", "g", "defs", "symbol", "use", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "text", "tspan",
 	"textPath", "title", "desc", "metadata", "linearGradient", "radialGradient", "stop", "pattern", "clipPath", "mask",
@@ -136,7 +136,7 @@ function xmlChars__(content, start, end)
 }
 
 /**
- * @description Scans a comment, which must end at its first "--": exposed to the comment strip at the start or after ">" or XML whitespace, else vaulted.
+ * @description Scans a comment, which must end at its first "--": exposed to the comment strip at the start or after ">", tab, LF or space, else vaulted (after CR, a LF after it would join into one line break).
  * @param {Object} scan - Scanner state.
  * @param {number} start - Index of "<!--".
  * @return {number} Index after the comment, or -1 when it is not a well-formed comment.
