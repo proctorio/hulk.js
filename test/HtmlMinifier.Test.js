@@ -1206,6 +1206,40 @@ describe("HTML diff review round 10", () =>
 		expect(html("<p class=\"a\">x  y</p><textarea><div style=\"white&#45;space:pre\"></textarea>")).toBe("<p class=\"a\">x y</p><textarea><div style=\"white&#45;space:pre\"></textarea>");
 	});
 
+	it("diff r15: whitespace next to a literal > or < in text stays (collapsed to one space unless the document spells white-space), and only a run alone between two tags is dropped (red on 4b106ba)", () =>
+	{
+		// the document spells white-space: the text as written, a literal ">" and "<" are text, not tag boundaries
+		const kept = [
+			"<p style=\"white-space:pre\">a >  < b</p>",
+			"<p style=\"white-space:pre\">value >  <span>text</span></p>",
+			"<p style=\"white-space:pre\"><b>x</b>  < y</p>"
+		];
+
+		expect(html(kept[0])).toBe(kept[0]);
+		expect(html(kept[1])).toBe(kept[1]);
+		expect(html(kept[2])).toBe(kept[2]);
+
+		// a comment goes (the comment loop's) and the whitespace around it stays
+		expect(html("<p style=\"white-space:pre\">a >\t\t<!-- c -->b</p><p>c</p>")).toBe("<p style=\"white-space:pre\">a >\t\tb</p><p>c</p>");
+
+		// every document: one space, as for any other text (main removed it, so "Home > <a>" lost the space)
+		expect(html("<p>a >  < b</p>")).toBe("<p>a > < b</p>");
+		expect(html("<p>Home > <a href=\"/\">x</a></p>")).toBe("<p>Home > <a href=/>x</a></p>");
+		expect(html("<b>x</b>  < y")).toBe("<b>x</b> < y");
+		expect(html("<p>a >\n</p>")).toBe("<p>a > </p>");
+
+		// controls: text of its own between two tags is not a gap; a run of whitespace alone between two tags or a tag and a comment is dropped, in either mode; one at the start or the end of the document is not between two tags
+		expect(html("<p><b>x</b>a><i>y</i></p>")).toBe("<p><b>x</b>a><i>y</i></p>");
+		expect(html("<p style=\"white-space:pre\"><b>x</b> a> <i>y</i></p>")).toBe("<p style=\"white-space:pre\"><b>x</b> a> <i>y</i></p>");
+		expect(html("<b>x</b> <code>y</code> <b>z</b>")).toBe("<b>x</b> <code>y</code> <b>z</b>");
+		expect(html("  <p style=\"white-space:pre\">a</p>  ")).toBe("  <p style=\"white-space:pre\">a</p>  ");
+		expect(html("  <p>a</p>  ")).toBe("<p>a</p>");
+		expect(html("<div> <p>a</p> <!-- c --> <p>b</p> </div>")).toBe("<div><p>a</p><p>b</p></div>");
+		expect(html("<p style=\"white-space:pre\">a</p>  <p>b</p>")).toBe("<p style=\"white-space:pre\">a</p><p>b</p>");
+		expect(html("<p style=\"white-space:pre\">a</p>\n\t<!-- c -->  <p>b</p>")).toBe("<p style=\"white-space:pre\">a</p><p>b</p>");
+		expect(html("<ul> <li>a</li> \n <li>b</li> </ul>")).toBe("<ul><li>a</li><li>b</li></ul>");
+	});
+
 	it("diff r12: a comment right after a high surrogate stays, since removing it would join the halves of a pair (red on main)", () =>
 	{
 		// two lone halves are two replacement characters once encoded; joined they are one character

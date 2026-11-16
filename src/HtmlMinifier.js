@@ -1,7 +1,7 @@
 import { isTextElement__, payload__, textEnd__ } from "./HtmlPayload.js";
 import {
 	ESCAPES__, asciiLower__, attributeValue__, cachedSearch__, caseless__, collapseSpace__, escapeMarks__, isAsciiAlpha__, readTag__, searchFrom__,
-	tagSource__, tagText__, trimHtmlSpace__
+	skipSpace__, tagSource__, tagText__, trimHtmlSpace__
 } from "./HtmlTags.js";
 import { stripHtmlCommentsOnce__ } from "./MarkupScanners.js";
 import { MARK__, restoreVault__, vault__ } from "./Vault.js";
@@ -117,7 +117,7 @@ function noteUnread__(state, from, to)
 }
 
 /**
- * @description Adds the pending text run to the output.
+ * @description Adds the pending text run to the output; one of whitespace alone, between two constructs the scan read, is noted as a gap.
  * @param {Object} state - Scanner state.
  * @param {number} end - Index where the run ends.
  * @return {void}
@@ -127,6 +127,7 @@ function flush__(state, end)
 	const { text, textStart } = state;
 
 	if (state.block !== null || end <= textStart) return;
+	if (state.scope === COLLAPSE__ && skipSpace__(text, textStart) >= end) state.gaps.push(state.parts.length);
 
 	state.parts.push(state.scope === COLLAPSE__ ? escapeMarks__(state, textStart, end) : vault__(state.spans, text.slice(textStart, end)));
 }
@@ -555,6 +556,7 @@ function scan__(text)
 		text,
 		spans: [],
 		parts: [],
+		gaps: [],
 		foreign: [],
 		scopes: [],
 		scope: COLLAPSE__,
@@ -597,17 +599,31 @@ function scan__(text)
 }
 
 /**
+ * @description Empties a gap, a run of whitespace alone between two constructs the scan read, when the output before it ends in ">" and the output after it starts with "<"; next to vaulted text it stays.
+ * @param {Array<string>} parts - Output parts.
+ * @param {number} gap - Index of the gap's part.
+ * @return {void}
+ */
+function dropBetweenTags__(parts, gap)
+{
+	if (gap > 0 && gap + 1 < parts.length && parts[gap - 1].endsWith(">") && parts[gap + 1].startsWith("<")) parts[gap] = "";
+}
+
+/**
  * @description Minifies HTML content; one that mentions white-space anywhere (a style attribute, a stylesheet, a class
  * name), or spells it with a character reference or an escape in a style attribute or element, keeps the whitespace in
- * its text as written, apart from runs between a ">" and a "<".
+ * its text as written, apart from a run of whitespace alone between two tags.
  * @param {string} content - Original HTML content.
  * @return {string} Minified output of the given HTML content.
  */
 function minifyHtml__(content)
 {
-	const { parts, spans, keep: scanned } = scan__(content);
+	const { parts, spans, gaps, keep: scanned } = scan__(content);
 	const keep = scanned || WHITE_SPACE__.test(content);
-	let minified = collapseSpace__(parts.join(""), true, keep);
+
+	for (const gap of gaps) dropBetweenTags__(parts, gap);
+
+	let minified = collapseSpace__(parts.join(""), keep);
 	let previous;
 
 	if (!keep) minified = trimHtmlSpace__(minified);

@@ -429,13 +429,11 @@ function tagParts__(state, tag, html)
  * @param {string} text - Vaulted text.
  * @param {number} start - Start of the run.
  * @param {number} end - End of the run.
- * @param {boolean} betweenTags - Whether a run between ">" and "<" is dropped.
- * @param {boolean} keep - Whether every other run stays as it is.
- * @return {string} Nothing between tags, one space for a longer run or a line feed or tab, else the run as it is.
+ * @param {boolean} keep - Whether the run stays as it is.
+ * @return {string} One space for a longer run or a line feed or tab, else the run as it is.
  */
-function spaceRun__(text, start, end, betweenTags, keep)
+function spaceRun__(text, start, end, keep)
 {
-	if (betweenTags && text[start - 1] === ">" && text[end] === "<") return "";
 	if (keep) return text.slice(start, end);
 	if (end - start > 1 || text[start] === "\n" || text[start] === "\t") return " ";
 
@@ -445,11 +443,10 @@ function spaceRun__(text, start, end, betweenTags, keep)
 /**
  * @description Turns line feeds and tabs into spaces and every longer run of HTML whitespace into one space, in one pass.
  * @param {string} text - Vaulted text.
- * @param {boolean} betweenTags - Whether runs between ">" and "<" are dropped as well.
- * @param {boolean} [keep] - Whether every other run stays as it is.
+ * @param {boolean} [keep] - Whether every run stays as it is.
  * @return {string} The text with its whitespace collapsed.
  */
-function collapseSpace__(text, betweenTags, keep = false)
+function collapseSpace__(text, keep = false)
 {
 	let output = "";
 	let copied = 0;
@@ -458,7 +455,7 @@ function collapseSpace__(text, betweenTags, keep = false)
 	while (start !== -1)
 	{
 		const end = skipSpace__(text, start);
-		const run = spaceRun__(text, start, end, betweenTags, keep);
+		const run = spaceRun__(text, start, end, keep);
 
 		if (run !== text.slice(start, end))
 		{
@@ -481,7 +478,7 @@ function collapseSpace__(text, betweenTags, keep = false)
  */
 function tagText__(state, tag, html)
 {
-	return collapseSpace__(tagParts__(state, tag, html), false);
+	return collapseSpace__(tagParts__(state, tag, html));
 }
 
 /**
@@ -507,6 +504,7 @@ export {
 	isAsciiAlpha__,
 	readTag__,
 	searchFrom__,
+	skipSpace__,
 	tagSource__,
 	tagText__,
 	trimHtmlSpace__
