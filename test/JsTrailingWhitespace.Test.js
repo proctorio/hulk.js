@@ -40,6 +40,10 @@ const RUN__ = 131072;
 // CPU-time bound of every scaling test, as in the markup and JS tests
 const CPU_MS__ = 3000;
 
+// CPU-time bound of the 8 MB rows: they take 16 to 126 ms here and 3156 ms once on a CI agent (build 203741), while
+// the old regex needs 19 s at 128K and grows with the square, so hours at 8 MB: a loose bound loses nothing
+const BIG_CPU_MS__ = 20000;
+
 // generous per-test limit: v8 coverage slows the large inputs down several times over
 const SLOW_TEST_MS__ = 60000;
 
@@ -379,7 +383,7 @@ describe("the whitespace step runs in linear time", () =>
 
 				// a concatenation is a rope until something reads it: read it inside the timed call
 				output.charCodeAt(0);
-			})).toBeLessThan(CPU_MS__);
+			})).toBeLessThan(BIG_CPU_MS__);
 			expect(difference__(output, expected)).toBeNull();
 		}
 	}, SLOW_TEST_MS__);
