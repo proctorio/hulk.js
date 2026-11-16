@@ -144,9 +144,6 @@ Limits:
 - ✅ **Kept as written**: indentation, spacing within lines, names, strings, template literals, regexes, and comment-like text after code (`"http://example.com"`). A line inside a template literal or a string continuation that starts with `//` or `/*` is content, not a comment (`` `a\n// x\nb` `` is unchanged), and so are trailing spaces and blank lines inside them
 - ✅ **Unsure means trim only**: a lexer reads the file to tell code from strings, templates and regexes. When it cannot (a `/` after `yield`, `await` or `of`, `<!--` or a `-->` that starts a line, a string or regex cut by a line break, a template or bracket left open, a closer that does not match), nothing is edited except the final trim (`// c\nvar a = 1;\n<!-- x` is unchanged)
 
-Limits:
-- **A very long run of whitespace that does not end a line** is slow: the trailing-whitespace rule is quadratic in its length
-
 ### JSON Optimizations
 - ✅ **Native JSON.stringify**: `JSON.stringify(JSON.parse(content))`, so all whitespace outside strings is removed. String values are kept; their escapes may be written differently (`"a\/"` → `"a/"`)
 - ✅ **Fallback handling**: The content is returned unchanged (without a leading BOM) when `JSON.parse` or `JSON.stringify` throws, as it does for invalid JSON

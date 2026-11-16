@@ -55,8 +55,9 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 //
 // Linear time: one pass with index jumps (whitespace runs, line comments and "*/" are found by search).
 // The "-->" check caches the next line terminator and searches again only once the scan passes it.
-// The /\s+$/gum regex is main's, unchanged: its quadratic cost on a long whitespace run that does not end
-// a line is item 47108's. The filter walks the protected spans with one pointer, in match order.
+// trimLineEnds__ finds main's /\s+$/gum matches in one pass (item 47108, test/JsTrailingWhitespace.Test.js), where the
+// regex took quadratic time on a long whitespace run that does not end a line. Its filter walks the protected
+// spans with one pointer, in match order.
 
 const js = content => minify__(content, "js");
 const lexer = () => import("../src/JsLexer.js");
@@ -850,7 +851,7 @@ describe("JS scan in linear time", () =>
 
 	it("scan skips a whitespace run that does not end a line in linear time", async() =>
 	{
-		// through minify__ such a run meets main's /\s+$/gum, whose quadratic cost is item 47108's
+		// minify__ on such a run is timed in JsTrailingWhitespace.Test.js (item 47108)
 		const { scanJs__ } = await lexer();
 		const input = `x = '${TWO_BYTE__}';${" \t\u00A0".repeat(LARGE__ / 3)}y();`;
 		let scan = null;
