@@ -76,11 +76,12 @@ function emitTag__(state, tag, html)
 /**
  * @description Tells whether text the scan will not read could spell white-space in a style, with a character reference, an escape or markup that splits the text.
  * @param {string} rest - The unscanned text.
- * @return {boolean} True when the text has a style attribute and a "&" or a backslash, or a style element and a backslash or an svg or math element.
+ * @param {boolean} [foreign] - Whether the scan stopped inside svg or math content, which the rest may still be part of.
+ * @return {boolean} True when the text has a style attribute and a "&" or a backslash, or a style element and a backslash, an svg or math element, or foreign content already open.
  */
-function mayHoldEscape__(rest)
+function mayHoldEscape__(rest, foreign = false)
 {
-	return (STYLE_ATTRIBUTE__.test(rest) && ESCAPES__.test(rest)) || (STYLE_ELEMENT__.test(rest) && (rest.includes("\\") || FOREIGN_OPEN__.test(rest)));
+	return (STYLE_ATTRIBUTE__.test(rest) && ESCAPES__.test(rest)) || (STYLE_ELEMENT__.test(rest) && (foreign || rest.includes("\\") || FOREIGN_OPEN__.test(rest)));
 }
 
 /**
@@ -95,12 +96,24 @@ function latch__(state, open)
 	const { text, spans, block } = state;
 	const rest = text.slice(block === null ? open : block.start);
 
-	if (mayHoldEscape__(rest)) state.keep = true;
+	if (mayHoldEscape__(rest, state.foreign.length > 0)) state.keep = true;
 
 	state.parts.push(block === null ? `<${vault__(spans, rest.slice(1))}` : vault__(spans, rest));
 	state.block = null;
 	state.done = true;
 	advance__(state, text.length);
+}
+
+/**
+ * @description Notes the content of a raw text or RCDATA element, or the rest of a document after a plaintext element, which the scan does not read; in a document with a select, frameset or col the parser may ignore the start tag, and then the content is markup that can spell white-space in a style.
+ * @param {Object} state - Scanner state.
+ * @param {number} from - Index where the content starts.
+ * @param {number} to - Index where the content ends.
+ * @return {void}
+ */
+function noteUnread__(state, from, to)
+{
+	if (state.ignorable && mayHoldEscape__(state.text.slice(from, to))) state.keep = true;
 }
 
 /**
@@ -216,6 +229,8 @@ function textElement__(state, tag)
 		return;
 	}
 
+	noteUnread__(state, tag.end, close === -1 ? text.length : close);
+
 	const endTag = close === -1 ? null : readTag__(text, close, true);
 	const complete = endTag !== null && endTag.end !== -1;
 
@@ -240,6 +255,7 @@ function plaintext__(state, tag)
 {
 	const { text } = state;
 
+	noteUnread__(state, tag.end, text.length);
 	emitTag__(state, tag, true);
 
 	if (tag.end < text.length) emit__(state, vault__(state.spans, text.slice(tag.end)));

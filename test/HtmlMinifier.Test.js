@@ -1154,6 +1154,58 @@ describe("HTML diff review round 10", () =>
 		expect(html(`<p class="a">x  y</p>${stop}<svg><g></g></svg>`)).toBe(`<p class="a">x y</p>${stop}<svg><g></g></svg>`);
 	});
 
+	it("diff r13: text after the scan stopped inside svg or math content that holds a style element keeps the document's text whitespace (red on 43335ba)", () =>
+	{
+		// the rest is still foreign content, where a reference or a CDATA section can spell the name: the svg was opened before the latch
+		const stop = "<pre><table></pre></table>";
+		const kept = [
+			"<p class=\"a\">x  y</p><svg></unknown><style>.a{white&#45;space:pre}</style></svg>",
+			"<p class=\"a\">x  y</p><svg></unknown><style>.a{white<![CDATA[-]]>space:pre}</style></svg>",
+			"<p class=\"a\">x  y</p><math></unknown><style>.a{white<![CDATA[-]]>space:pre}</style></math>",
+			"<p class=\"a\">x  y</p><svg><desc></x></desc><style>.a{white&#45;space:pre}</style></svg>",
+
+			// a style element that is open at the latch: its text goes on in the rest, split by the unmatched end tag
+			"<p class=\"a\">x  y</p><svg><style>.a{white</unknown>-space:pre}</style></svg>",
+			"<p class=\"a\">x  y</p><math><style>.a{white</unknown>-space:pre}</style></math>",
+
+			// conservative: any style element after a latch inside foreign content
+			"<p class=\"a\">x  y</p><svg></unknown></svg><style>.a{color:red}</style>"
+		];
+
+		for (const input of kept) expect(html(input)).toBe(input);
+
+		// controls: no style element in the rest, the foreign content closed before the latch, an HTML breakout that left it, a latch in HTML content
+		expect(html("<p class=\"a\">x  y</p><svg></unknown><g></g></svg>")).toBe("<p class=\"a\">x y</p><svg></unknown><g></g></svg>");
+		expect(html(`<p class="a">x  y</p><svg></svg>${stop}<style>.a{color:red}</style>`)).toBe(`<p class="a">x y</p><svg></svg>${stop}<style>.a{color:red}</style>`);
+		expect(html("<p class=\"a\">x  y</p><svg><p></p><style>.a{white&#45;space:pre}</style></svg>")).toBe("<p class=\"a\">x y</p><svg><p></p><style>.a{white&#45;space:pre}</style></svg>");
+		expect(html(`<p class="a">x  y</p>${stop}<style>.a{color:red}</style>`)).toBe(`<p class="a">x y</p>${stop}<style>.a{color:red}</style>`);
+	});
+
+	it("diff r13: raw text content that a select, frameset or col lets the parser ignore the start tag of is read as markup, so a style in it keeps the document's text whitespace (red on 43335ba)", () =>
+	{
+		const kept = [
+			"<p class=\"a\">x  y</p><select><title><select><div style=\"white&#x2d;spac&#101;:pre\">",
+			"<p class=\"a\">x  y</p><select><pre><xmp></select><div style=\"whit\\65 \\2d spac\\65:pre\"></template>",
+			"<p class=\"a\">x  y</p><select><plaintext><template><div style=\"wh\\69te&#45;Space:pre}\"></noscript>",
+			"<p class=\"a\">x  y</p><frameset><xmp><div style=\"white&#45;space:pre\">",
+
+			// already kept: a style element in the content latches the rest
+			"<p class=\"a\">x  y</p><select><xmp></select><style>.a{whit\\65-space:pre}</style>"
+		];
+
+		for (const input of kept) expect(html(input)).toBe(input);
+
+		// controls: nothing in the content that can spell it; no select, frameset or col, where the start tag is not ignored
+		expect(html("<p class=\"a\">x  y</p><select><xmp>plain</xmp></select>")).toBe("<p class=\"a\">x y</p><select><xmp>plain</xmp></select>");
+		expect(html("<p class=\"a\">x  y</p><select><xmp></xmp><div style=\"color:red\"></select>")).toBe("<p class=\"a\">x y</p><select><xmp></xmp><div style=\"color:red\"></select>");
+		expect(html("<p class=\"a\">x  y</p><select><xmp>x</xmp><div style=\"color:red\">a &amp; b</div>")).toBe("<p class=\"a\">x y</p><select><xmp>x</xmp><div style=\"color:red\">a &amp; b</div>");
+		expect(html("<p class=\"a\">x  y</p><select><xmp style=\"color:red\" title=\"a&amp;b\">x</xmp>")).toBe("<p class=\"a\">x y</p><select><xmp style=\"color:red\" title=\"a&amp;b\">x</xmp>");
+		expect(html("<p class=\"a\">x  y</p><select><plaintext style=\"color:red\" title=\"a&amp;b\">x")).toBe("<p class=\"a\">x y</p><select><plaintext style=\"color:red\" title=\"a&amp;b\">x");
+		expect(html("<p class=\"a\">x  y</p><noscript><div style=\"white&#45;space:pre\"></noscript>")).toBe("<p class=\"a\">x y</p><noscript><div style=\"white&#45;space:pre\"></noscript>");
+		expect(html("<p class=\"a\">x  y</p><xmp><div style=\"white&#45;space:pre\"></xmp>")).toBe("<p class=\"a\">x y</p><xmp><div style=\"white&#45;space:pre\"></xmp>");
+		expect(html("<p class=\"a\">x  y</p><textarea><div style=\"white&#45;space:pre\"></textarea>")).toBe("<p class=\"a\">x y</p><textarea><div style=\"white&#45;space:pre\"></textarea>");
+	});
+
 	it("diff r12: a comment right after a high surrogate stays, since removing it would join the halves of a pair (red on main)", () =>
 	{
 		// two lone halves are two replacement characters once encoded; joined they are one character
