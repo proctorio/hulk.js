@@ -630,7 +630,7 @@ newlines</pre>
 		expect(minify__("", "css")).toBe("");
 	});
 
-	it("diff r10: a result that would start with U+FEFF, which the stripped content did not, is not used (red on 22f8e71)", () =>
+	it("diff r10: a result that would start with U+FEFF, which the stripped content did not, is not used (red on main)", () =>
 	{
 		// a U+FEFF after what a minifier removes would become a byte order mark: the minified copy would lose its first rule or tag
 		for (const [extension, content] of [

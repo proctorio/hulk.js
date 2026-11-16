@@ -19,6 +19,7 @@ const VERBATIM__ = 2;
 const GATE__ = new RegExp(`<(?:${["select", "frameset", "noscript", "col"].map(caseless__).join("|")})`, "u");
 const WHITE_SPACE__ = /white-?space/iu;
 const STYLE_END__ = new RegExp(`</${caseless__("style")}[\\t\\n\\f\\r />]`, "gu");
+const ESCAPES_SEARCH__ = new RegExp(ESCAPES__.source, "gu");
 const STYLE_ATTRIBUTE__ = /style[\t\n\f\r ]*=/iu;
 const STYLE_ELEMENT__ = /<style[\t\n\f\r />]/iu;
 const HIDDEN_STATE__ = new RegExp(`<(?:!--|(?:${["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext", "svg", "math"].map(caseless__).join("|")})[\\t\\n\\f\\r />])`, "u");
@@ -75,11 +76,11 @@ function emitTag__(state, tag, html)
 /**
  * @description Tells whether text the scan will not read could spell white-space in a style, with a character reference or an escape.
  * @param {string} rest - The unscanned text.
- * @return {boolean} True when the text has a style attribute and a "&" or a backslash, or a style element and a backslash.
+ * @return {boolean} True when the text has a style attribute or element and a "&" or a backslash.
  */
 function mayHoldEscape__(rest)
 {
-	return (STYLE_ATTRIBUTE__.test(rest) && ESCAPES__.test(rest)) || (STYLE_ELEMENT__.test(rest) && rest.includes("\\"));
+	return (STYLE_ATTRIBUTE__.test(rest) || STYLE_ELEMENT__.test(rest)) && ESCAPES__.test(rest);
 }
 
 /**
@@ -380,13 +381,15 @@ function startTag__(state, open)
 }
 
 /**
- * @description Tells whether a style element's content holds a backslash, which can start an escape in a property name.
+ * @description Tells whether a style element's content can hold an escape in a property name: a backslash, or in foreign content a "&" too.
  * @param {Object} state - Scanner state.
  * @param {Object} tag - The style start tag.
- * @return {boolean} True when a backslash lies between the tag and the next "</style" (or the end of the text).
+ * @return {boolean} True when one lies between the tag and the next "</style" (in foreign content, anywhere after the tag: CDATA and comments can hide that end tag).
  */
 function styleHoldsEscape__(state, tag)
 {
+	if (state.foreign.length > 0) return state.nextEscape(tag.end) !== -1;
+
 	const slash = state.nextBackslash(tag.end);
 	const end = state.nextStyleEnd(tag.end);
 
@@ -537,6 +540,7 @@ function scan__(text)
 		nextBang: cachedSearch__(index => text.indexOf("--!>", index)),
 		nextGt: cachedSearch__(index => text.indexOf(">", index)),
 		nextBackslash: cachedSearch__(index => text.indexOf("\\", index)),
+		nextEscape: cachedSearch__(index => searchFrom__(ESCAPES_SEARCH__, text, index)),
 		nextStyleEnd: cachedSearch__(index => searchFrom__(STYLE_END__, text, index))
 	};
 

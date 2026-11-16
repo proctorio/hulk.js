@@ -869,7 +869,7 @@ describe("SVG style and script payloads", () =>
 
 describe("SVG diff review round 10", () =>
 {
-	it("diff r10: a CDATA section that ends in CR, with a LF right after it, stays as written, since the minifier would read one CRLF line break where there were two (red on 22f8e71)", () =>
+	it("diff r10: a CDATA section that ends in CR, with a LF right after it, stays as written, since the minifier would read one CRLF line break where there were two (red on main)", () =>
 	{
 		// the section's CR and the LF after it are two line breaks; joined, they are one
 		const kept = `${ROOT__}<style><![CDATA[a\\\r]]>\n</style></svg>`;
