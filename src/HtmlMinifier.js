@@ -15,6 +15,10 @@ const CDATA__ = 5;
 const COLLAPSE__ = 0;
 const PRESERVE__ = 1;
 const VERBATIM__ = 2;
+const GAP_PART__ = 1;
+const TAG_PART__ = 2;
+const NOTE_PART__ = 3;
+const DOCTYPE_PART__ = 4;
 
 const GATE__ = new RegExp(`<(?:${["select", "frameset", "noscript", "col"].map(caseless__).join("|")})`, "u");
 const WHITE_SPACE__ = /white-?space/iu;
@@ -62,6 +66,19 @@ function emit__(state, output)
 }
 
 /**
+ * @description Adds a part to the output and notes what kind it is, for the rule on whitespace between tags.
+ * @param {Object} state - Scanner state.
+ * @param {number} kind - GAP_PART__, TAG_PART__, NOTE_PART__ or DOCTYPE_PART__.
+ * @param {string} output - Text for the vaulted stream.
+ * @return {void}
+ */
+function emitKind__(state, kind, output)
+{
+	state.kinds.set(state.parts.length, kind);
+	state.parts.push(output);
+}
+
+/**
  * @description Adds a tag in its minified form to the output, unless a preserved block is open.
  * @param {Object} state - Scanner state.
  * @param {Object} tag - Complete tag.
@@ -70,7 +87,7 @@ function emit__(state, output)
  */
 function emitTag__(state, tag, html)
 {
-	if (state.block === null) state.parts.push(tagText__(state, tag, html));
+	if (state.block === null) emitKind__(state, TAG_PART__, tagText__(state, tag, html));
 }
 
 /**
@@ -117,7 +134,7 @@ function noteUnread__(state, from, to)
 }
 
 /**
- * @description Adds the pending text run to the output; one of whitespace alone, between two constructs the scan read, is noted as a gap.
+ * @description Adds the pending text run to the output; one of whitespace alone is noted as a gap.
  * @param {Object} state - Scanner state.
  * @param {number} end - Index where the run ends.
  * @return {void}
@@ -127,9 +144,10 @@ function flush__(state, end)
 	const { text, textStart } = state;
 
 	if (state.block !== null || end <= textStart) return;
-	if (state.scope === COLLAPSE__ && skipSpace__(text, textStart) >= end) state.gaps.push(state.parts.length);
 
-	state.parts.push(state.scope === COLLAPSE__ ? escapeMarks__(state, textStart, end) : vault__(state.spans, text.slice(textStart, end)));
+	if (state.scope !== COLLAPSE__) state.parts.push(vault__(state.spans, text.slice(textStart, end)));
+	else if (skipSpace__(text, textStart) >= end) emitKind__(state, GAP_PART__, escapeMarks__(state, textStart, end));
+	else state.parts.push(escapeMarks__(state, textStart, end));
 }
 
 /**
@@ -195,21 +213,19 @@ function tagLike__(state, source, closed)
  */
 function emitElement__(state, tag, content, endTag)
 {
-	const { spans, parts } = state;
-
 	if (VAULTED_ELEMENTS__.has(tag.name))
 	{
 		const element = tagSource__(state, tag) + payload__(state.text, tag, content, state.gated) + (endTag === null ? "" : tagSource__(state, endTag));
 
-		parts.push(tagLike__(state, element, endTag !== null));
+		emitKind__(state, TAG_PART__, tagLike__(state, element, endTag !== null));
 
 		return;
 	}
 
-	parts.push(tagText__(state, tag, true));
+	emitKind__(state, TAG_PART__, tagText__(state, tag, true));
 
-	if (content !== "") parts.push(vault__(spans, content));
-	if (endTag !== null) parts.push(tagText__(state, endTag, true));
+	if (content !== "") state.parts.push(vault__(state.spans, content));
+	if (endTag !== null) emitKind__(state, TAG_PART__, tagText__(state, endTag, true));
 }
 
 /**
@@ -473,7 +489,7 @@ function comment__(state, open)
 {
 	const end = commentEnd__(state, open);
 
-	if (state.block === null) state.parts.push(joinsNeighbour__(state.text.charCodeAt(open - 1)) ? vault__(state.spans, state.text.slice(open, end)) : escapeMarks__(state, open, end));
+	if (state.block === null) emitKind__(state, NOTE_PART__, joinsNeighbour__(state.text.charCodeAt(open - 1)) ? vault__(state.spans, state.text.slice(open, end)) : escapeMarks__(state, open, end));
 
 	advance__(state, end);
 }
@@ -491,7 +507,8 @@ function bogus__(state, open)
 	const end = close === -1 ? text.length : close + 1;
 	const doctype = text[open + 1] === "!" && asciiLower__(text.slice(open + 2, open + 9)) === "doctype";
 
-	if (state.block === null) state.parts.push(doctype ? tagLike__(state, text.slice(open, end), close !== -1) : escapeMarks__(state, open, end));
+	if (state.block === null && doctype) emitKind__(state, DOCTYPE_PART__, tagLike__(state, text.slice(open, end), close !== -1));
+	else if (state.block === null) emitKind__(state, NOTE_PART__, escapeMarks__(state, open, end));
 
 	advance__(state, end);
 }
@@ -556,7 +573,7 @@ function scan__(text)
 		text,
 		spans: [],
 		parts: [],
-		gaps: [],
+		kinds: new Map(),
 		foreign: [],
 		scopes: [],
 		scope: COLLAPSE__,
@@ -599,14 +616,40 @@ function scan__(text)
 }
 
 /**
- * @description Empties a gap, a run of whitespace alone between two constructs the scan read, when the output before it ends in ">" and the output after it starts with "<"; next to vaulted text it stays.
+ * @description Empties the gaps, runs of whitespace alone, that lie between two tags once the comments between them are gone; a gap next to text or a vaulted construct stays, as does one at the start or the end of the document, and a DOCTYPE counts as a tag only before any tag or text.
  * @param {Array<string>} parts - Output parts.
- * @param {number} gap - Index of the gap's part.
+ * @param {Map<number, number>} kinds - Kind of each gap, tag, comment and DOCTYPE part, by its index in the parts.
  * @return {void}
  */
-function dropBetweenTags__(parts, gap)
+function dropBetweenTags__(parts, kinds)
 {
-	if (gap > 0 && gap + 1 < parts.length && parts[gap - 1].endsWith(">") && parts[gap + 1].startsWith("<")) parts[gap] = "";
+	let gaps = [];
+	let open = false;
+	let prolog = true;
+	let next = 0;
+
+	for (const [index, kind] of kinds)
+	{
+		if (index !== next)
+		{
+			open = false;
+			prolog = false;
+		}
+
+		next = index + 1;
+
+		if (kind === GAP_PART__) gaps.push(index);
+		else if (kind !== NOTE_PART__)
+		{
+			const boundary = kind === TAG_PART__ || prolog;
+
+			if (boundary && open) for (const gap of gaps) parts[gap] = "";
+
+			open = boundary;
+			prolog = prolog && kind === DOCTYPE_PART__;
+			gaps = [];
+		}
+	}
 }
 
 /**
@@ -618,10 +661,10 @@ function dropBetweenTags__(parts, gap)
  */
 function minifyHtml__(content)
 {
-	const { parts, spans, gaps, keep: scanned } = scan__(content);
+	const { parts, spans, kinds, keep: scanned } = scan__(content);
 	const keep = scanned || WHITE_SPACE__.test(content);
 
-	for (const gap of gaps) dropBetweenTags__(parts, gap);
+	dropBetweenTags__(parts, kinds);
 
 	let minified = collapseSpace__(parts.join(""), keep);
 	let previous;

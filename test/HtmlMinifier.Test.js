@@ -895,14 +895,14 @@ describe("HTML diff review round 2", () =>
 
 		for (const input of inputs) expect(html(input), input).toBe(input);
 
-		expect(html("<p>a  b</p>\n<select></select>\n<svg>\n<g>  </g>\n<title>t  u</title></svg>")).toBe("<p>a b</p><select></select><svg><g></g><title>t  u</title></svg>");
+		expect(html("<p>a  b</p>\n<select></select>\n<svg>\n<g>  </g>\n<title>t  u</title></svg>")).toBe("<p>a b</p><select></select><svg><g></g> <title>t  u</title></svg>");
 	});
 
 	it("diff r2: with <select> in it, a CDATA section in foreign content latches the rest (red on main)", () =>
 	{
 		// in select mode "<![CDATA[x>" is a bogus comment, and the <textarea> after it is real
 		expect(html("<select><svg><![CDATA[x><textarea>]]>A  B</textarea></svg>")).toBe("<select><svg><![CDATA[x><textarea>]]>A  B</textarea></svg>");
-		expect(html("<p>a  b</p><select></select><svg>  <![CDATA[x]]>  <g>  </g>  </svg>")).toBe("<p>a b</p><select></select><svg><![CDATA[x]]>  <g>  </g>  </svg>");
+		expect(html("<p>a  b</p><select></select><svg>  <![CDATA[x]]>  <g>  </g>  </svg>")).toBe("<p>a b</p><select></select><svg> <![CDATA[x]]>  <g>  </g>  </svg>");
 	});
 
 	it("main already does this right: without <select>, <frameset> or <col>, foreign content is minified, also when <noscript> gates the payloads", () =>
@@ -971,14 +971,14 @@ describe("HTML diff review round 2", () =>
 		expect(html(witness)).toBe(witness);
 		expect(html("<!DOCTYPE  html>\n<html>\n  <body>\n</body></html>")).toBe("<!DOCTYPE  html><html><body></body></html>");
 		expect(html("<!doctype\thtml  SYSTEM 'a  b'>\n<p>x</p>")).toBe("<!doctype\thtml  SYSTEM 'a  b'><p>x</p>");
-		expect(html("<p>x</p>\n<!DOCTYPE html  a")).toBe("<p>x</p><!DOCTYPE html  a");
+		expect(html("<p>x</p>\n<!DOCTYPE html  a")).toBe("<p>x</p> <!DOCTYPE html  a");
 	});
 
 	it("main already does this right: a plain DOCTYPE, and bogus comments still go through the stream rules", () =>
 	{
 		expect(html("<!DOCTYPE html>\n<html>\n<p>x</p>")).toBe("<!DOCTYPE html><html><p>x</p>");
-		expect(html("<?doctype  a>\n<p>x</p>")).toBe("<?doctype a><p>x</p>");
-		expect(html("<!doctyp  a>\n<p>x</p>")).toBe("<!doctyp a><p>x</p>");
+		expect(html("<p>x</p><?doctype  a>")).toBe("<p>x</p><?doctype a>");
+		expect(html("<!doctyp  a>")).toBe("<!doctyp a>");
 	});
 
 	it("main already does this right: the fuzz witness, a comment holding \"\\u00012\\u0001\" before a pre", () =>
@@ -1238,6 +1238,41 @@ describe("HTML diff review round 10", () =>
 		expect(html("<p style=\"white-space:pre\">a</p>  <p>b</p>")).toBe("<p style=\"white-space:pre\">a</p><p>b</p>");
 		expect(html("<p style=\"white-space:pre\">a</p>\n\t<!-- c -->  <p>b</p>")).toBe("<p style=\"white-space:pre\">a</p><p>b</p>");
 		expect(html("<ul> <li>a</li> \n <li>b</li> </ul>")).toBe("<ul><li>a</li><li>b</li></ul>");
+	});
+
+	it("diff r16: whitespace alone next to a comment, a bogus comment or a DOCTYPE is text of the node that goes on after it, and stays (red on 2978f97)", () =>
+	{
+		// the whitespace and the "a" are one text node once the comment is gone (Codex witnesses; the DOCTYPE inside a body is ignored)
+		expect(html("<p style=\"white-space:pre\">  <?text>a</p>")).toBe("<p style=\"white-space:pre\">  <?text>a</p>");
+		expect(html("<p style=\"white-space:pre\">  <!-- text -->a</p>")).toBe("<p style=\"white-space:pre\">  a</p>");
+		expect(html("<p style=\"white-space:pre\">  <!doctype x>a</p>")).toBe("<p style=\"white-space:pre\">  <!doctype x>a</p>");
+		expect(html("<p style=\"white-space:pre\"><b>x</b>\t<!-- c --><!-- d -->a</p>")).toBe("<p style=\"white-space:pre\"><b>x</b>\ta</p>");
+
+		// any document: a space stays where text follows the comment (main dropped it, so "x a" became "xa")
+		expect(html("<p><b>x</b>  <!-- c -->a</p>")).toBe("<p><b>x</b> a</p>");
+		expect(html("<p><b>x</b>  <?c>a</p>")).toBe("<p><b>x</b> <?c>a</p>");
+		expect(html("<p>a  <!-- c -->  <b>x</b></p>")).toBe("<p>a  <b>x</b></p>");
+
+		// a run of whitespace and comments between two tags goes whole, in either mode
+		expect(html("<p style=\"white-space:pre\"><b>x</b>  <!-- c -->  <i>y</i></p>")).toBe("<p style=\"white-space:pre\"><b>x</b><i>y</i></p>");
+		expect(html("<p style=\"white-space:pre\"><b>x</b>  <?c>  <i>y</i></p>")).toBe("<p style=\"white-space:pre\"><b>x</b><?c><i>y</i></p>");
+		expect(html("<div>\n<p>a</p>\n<!-- c -->\n<!-- d -->\n<p>b</p>\n</div>")).toBe("<div><p>a</p><p>b</p></div>");
+		expect(html("<div>\n<p>a</p>\n<?c>\n<!-- d -->\n<p>b</p>\n</div>")).toBe("<div><p>a</p><?c><p>b</p></div>");
+
+		// the DOCTYPE of a document is a tag; one after content is ignored by the parser and is not
+		expect(html("<!DOCTYPE html>\n<html>\n<p>x</p>")).toBe("<!DOCTYPE html><html><p>x</p>");
+		expect(html("<!-- banner -->\n<!DOCTYPE html>\n<html>\n<p>x</p>")).toBe("<!DOCTYPE html><html><p>x</p>");
+		expect(html("<!-- banner -->\n<!DOCTYPE html>\n<html style=\"white-space:pre\">\n<p>x</p>")).toBe("\n<!DOCTYPE html><html style=\"white-space:pre\"><p>x</p>");
+		expect(html("<p>x</p>\n<!DOCTYPE html>\n<p>y</p>")).toBe("<p>x</p> <!DOCTYPE html> <p>y</p>");
+		expect(html("x\n<!DOCTYPE html>\n<p>y</p>")).toBe("x <!DOCTYPE html> <p>y</p>");
+
+		// a comment kept after a CR or a high surrogate is a comment like any other: whitespace on both sides of it between two tags goes
+		expect(html("<b>x</b>\r<!-- c -->\n<i>y</i>")).toBe("<b>x</b><!-- c --><i>y</i>");
+		expect(html("<b>x</b>\r<!-- c -->y")).toBe("<b>x</b>\r<!-- c -->y");
+
+		// at the start of the document, after a leading comment, the whitespace is not between two tags either
+		expect(html("<?doctype  a>\n<p>x</p>")).toBe("<?doctype a> <p>x</p>");
+		expect(html("<!-- c -->\n<p>x</p>")).toBe("<p>x</p>");
 	});
 
 	it("diff r12: a comment right after a high surrogate stays, since removing it would join the halves of a pair (red on main)", () =>
