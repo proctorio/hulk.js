@@ -1,6 +1,6 @@
 {
   "name": "@proctorio/hulk",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Lightweight minification library for HTML, CSS, SVG, JavaScript, and JSON",
   "keywords": [
     "minify",

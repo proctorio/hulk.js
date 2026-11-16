@@ -13,8 +13,8 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 //
 // What the scanner sees at each "<":
 // - "<!--": a comment. It ends at "<!-->", "<!--->", the first "-->" or "--!>", or EOF. Both terminator searches are
-//   cached, so many comments do not rescan the text. Comments go to the stream as written; the comment loop below
-//   removes them, in one place (wi-47221 turns them into a marker).
+//   cached, so many comments do not rescan the text. Each terminated comment is vaulted as a tag-like marker and
+//   src/HtmlComments.js decides it in one pass: dropped, or kept as "<!---->" where a parser would read its neighbours otherwise.
 // - "<!", "<?", "</" + non-letter: a bogus comment to the first ">", passed through.
 // - "<!DOCTYPE" (any case): to its first ">", even inside a quoted identifier, as the tokenizer does, and vaulted whole
 //   as a tag-like marker: a changed public identifier can change the document mode (diff r2).
@@ -65,7 +65,7 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 // text, a vaulted construct, a latch or CDATA break the chain, and a document start or end is not a boundary (H5 is
 // kept: "<b>x</b> <i>y</i>" still loses its space). Then, unless the document mentions white-space (or the scan found
 // a style that may spell it with an escape or a character reference: the gate), a line feed or tab, or a run of two or
-// more whitespace characters, becomes one space; then trim, the comment loop (stripHtmlCommentsOnce__ to a fixed point),
+// more whitespace characters, becomes one space; then trim, the comments pass (src/HtmlComments.js, one pass),
 // trim, restore. A gated document keeps its text whitespace as written, apart from the gaps.
 //
 // Expected payloads are computed with minify__(payload, "css"/"js") because the CSS and JS minifiers change in the
@@ -157,8 +157,9 @@ describe("HTML plan cases (each red on main)", () =>
 		expectChangeable("const s=\"</script\u00A0>\";\n// c\nfoo();", "js");
 		expect(js("const s=\"</script\u00A0>\";\n// c\nfoo();")).toContain("</script");
 		expect(html(script)).toBe(script);
-		expectChangeable("a{b:x</**//StYlE>}", "css");
-		expect(css("a{b:x</**//StYlE>}").toLowerCase()).toContain("</style");
+
+		// since WI 47221 the CSS minifier keeps the comment that would join "<" and "/StYlE>"
+		expect(css("a{b:x</**//StYlE>}")).toBe("a{b:x</**//StYlE>}");
 		expect(html(style)).toBe(style);
 		expect(html("<style>a{--x:</**//StYlE>}</style><p>kept</p>")).toBe("<style>a{--x:</**//StYlE>}</style><p>kept</p>");
 	});
@@ -296,9 +297,9 @@ describe("HTML element content", () =>
 		expect(html("<p>a  b</p><a  href")).toBe("<p>a b</p><a  href");
 	});
 
-	it("main does the same, pinned residual (wi-47221): a comment ended by \"--!>\" runs to a later \"-->\"", () =>
+	it("a comment ended by \"--!>\" ends there, so the markup after it stays (WI 47221; main dropped everything up to a later \"-->\")", () =>
 	{
-		expect(html("<!--a--!><p>x</p><!--b-->")).toBe("");
+		expect(html("<!--a--!><p>x</p><!--b-->")).toBe("<p>x</p>");
 	});
 });
 
@@ -361,7 +362,7 @@ describe("HTML type and boolean attributes", () =>
 	});
 });
 
-describe("HTML main already does this right (r1 controls)", () =>
+describe("HTML r1 controls: what main already does right, and a bogus comment that it did not (WI 47221)", () =>
 {
 	it("keeps the space before a code block and separators as written", () =>
 	{
@@ -395,9 +396,9 @@ describe("HTML main already does this right (r1 controls)", () =>
 		expect(html("<div>  <p>  Hello  </p>  </div>")).toBe("<div><p> Hello </p></div>");
 	});
 
-	it("main does the same, pinned residual (wi-47221): a bogus comment holding \"<!--\" joins a later \"-->\"", () =>
+	it("a bogus comment holding \"<!--\" ends at its first \">\" and is kept (WI 47221; main joined it to a later \"-->\" and dropped what lay between)", () =>
 	{
-		expect(html("<p>x</p><!<!---->--<pre> a </pre>--><p>y</p>")).toBe("<p>x</p><p>y</p>");
+		expect(html("<p>x</p><!<!---->--<pre> a </pre>--><p>y</p>")).toBe("<p>x</p><!<!---->--<pre> a </pre>--><p>y</p>");
 	});
 });
 
@@ -416,8 +417,8 @@ describe("HTML reviewer probes: payloads that are minified", () =>
 	{
 		const payload = "let t=`a\n//keep\nb`;";
 
-		expect(html(`<!--><script>${payload}</script>`)).toBe(`<!--><script>${js(payload)}</script>`);
-		expect(html(`<!--x--!><script>${payload}</script>`)).toBe(`<!--x--!><script>${js(payload)}</script>`);
+		expect(html(`<!--><script>${payload}</script>`)).toBe(`<script>${js(payload)}</script>`);
+		expect(html(`<!--x--!><script>${payload}</script>`)).toBe(`<script>${js(payload)}</script>`);
 	});
 
 	it("r6: style after a breakout, in a table, and after a self-closed script or style", () =>
@@ -865,12 +866,12 @@ describe("HTML guards pinned by the mutation pass", () =>
 
 	it("\"<!--->\" ends a comment, so the textarea after it is real (red on main)", () =>
 	{
-		expect(html("<!---><textarea> a  b</textarea>")).toBe("<!---><textarea> a  b</textarea>");
+		expect(html("<!---><textarea> a  b</textarea>")).toBe("<textarea> a  b</textarea>");
 	});
 
 	it("a comment ends at the first of \"--!>\" and \"-->\" (red on main)", () =>
 	{
-		expect(html("<!--a--!><textarea> -->  x</textarea>")).toBe("<!--a--!><textarea> -->  x</textarea>");
+		expect(html("<!--a--!><textarea> -->  x</textarea>")).toBe("<textarea> -->  x</textarea>");
 	});
 
 	it("main already does this right: an unterminated comment runs to the end of the document", () =>
@@ -1136,7 +1137,7 @@ describe("HTML diff review round 10", () =>
 
 		for (const input of kept) expect(html(input)).toBe(input);
 
-		// the comment goes (the comment loop's), and the document's whitespace stays
+		// the comment goes (the comments pass's), and the document's whitespace stays
 		expect(html("<svg><style>.a{white<!-- -->-space:pre}</style></svg><div class=\"a\">x  y</div>")).toBe("<svg><style>.a{white-space:pre}</style></svg><div class=\"a\">x  y</div>");
 
 		// a text node alone has nothing to join: as before, in foreign content and in HTML (where CDATA is plain raw text)
@@ -1226,7 +1227,7 @@ describe("HTML diff review round 10", () =>
 		expect(html(kept[1])).toBe(kept[1]);
 		expect(html(kept[2])).toBe(kept[2]);
 
-		// a comment goes (the comment loop's) and the whitespace around it stays
+		// a comment goes (the comments pass's) and the whitespace around it stays
 		expect(html("<p style=\"white-space:pre\">a >\t\t<!-- c -->b</p><p>c</p>")).toBe("<p style=\"white-space:pre\">a >\t\tb</p><p>c</p>");
 
 		// every document: one space, as for any other text (main removed it, so "Home > <a>" lost the space)
@@ -1337,8 +1338,20 @@ describe("HTML stays linear (each input over 500k characters, with one above U+0
 		["ported from MarkupScanners: one run, no closing quote for any opener", "→" + "src=\"/".repeat(REPEAT__) + "'/ ", "→" + "src=\"/".repeat(REPEAT__) + "'/"],
 		["void: one \">\" shared by every tag", "→" + "<br ".repeat(REPEAT__) + ">", "→" + "<br ".repeat(REPEAT__ - 1) + "<br>"],
 		["comments: no \"-->\" after any opener", "→" + "<!--x".repeat(REPEAT__), "→" + "<!--x".repeat(REPEAT__)],
-		["comments: many ended by \"--!>\", no \"-->\"", "→" + "<!--a--!>".repeat(REPEAT__), "→" + "<!--a--!>".repeat(REPEAT__)],
+		["comments: many ended by \"--!>\", no \"-->\"", "→" + "<!--a--!>".repeat(REPEAT__), "→"],
 		["main already does this right: comments: many short ones", "→" + "<!--a-->b".repeat(REPEAT__), "→" + "b".repeat(REPEAT__)],
+		["WI 47221: comments: many in a row", "→" + "<!---->".repeat(REPEAT__), "→"],
+		["WI 47221: comments: many ended by \"-->\", then one by \"--!>\"", "→" + "<!--x-->".repeat(REPEAT__) + "<!--z--!>", "→"],
+		["WI 47221: comments: one by \"--!>\", then many ended by \"-->\"", "→<!--z--!>" + "<!--x-->".repeat(REPEAT__), "→"],
+		["WI 47221: comments: nested openers, one \"-->\"", "→" + "<!--".repeat(REPEAT__) + "-->", "→"],
+		["WI 47221: comments: \"<!\" many times, then \"--\", then many \"-->\" (a bogus comment up to the first \">\")", "→" + "<!".repeat(REPEAT__ >> 1) + "--" + "-->".repeat(REPEAT__ >> 1), "→" + "<!".repeat(REPEAT__ >> 1) + "--" + "-->".repeat(REPEAT__ >> 1)],
+		["WI 47221: comments: \"<!\" many times, \"--\", fewer \"-->\"", "→" + "<!".repeat(REPEAT__ >> 1) + "--" + "-->".repeat(REPEAT__ / 3 | 0), "→" + "<!".repeat(REPEAT__ >> 1) + "--" + "-->".repeat(REPEAT__ / 3 | 0)],
+		["WI 47221: comments: kept between \"<\" and a tag name", "→" + "<<!--x-->p>".repeat(REPEAT__ >> 2), "→" + "<<!---->p>".repeat(REPEAT__ >> 2)],
+		["WI 47221: comments: kept inside character references", "→" + "&am<!--x-->p;".repeat(REPEAT__ >> 2), "→" + "&am<!---->p;".repeat(REPEAT__ >> 2)],
+		["WI 47221: comments: one open reference, then many comments", "→&" + "a".repeat(REPEAT__) + "<!---->".repeat(REPEAT__), "→&" + "a".repeat(REPEAT__)],
+		["WI 47221: comments: kept in table text (the last one has nothing after it)", "→<table>" + "&#32;<!---->x<!---->".repeat(REPEAT__ >> 2), "→<table>" + "&#32;<!---->x<!---->".repeat((REPEAT__ >> 2) - 1) + "&#32;<!---->x"],
+		["WI 47221: comments: dropped in table text (both sides hold text)", "→<table>" + "a <!--x-->b ".repeat(REPEAT__ >> 2), "→<table>" + "a b ".repeat((REPEAT__ >> 2) - 1) + "a b"],
+		["WI 47221: comments: \"</>\" between many comments (one is kept, the last, where the text after it starts)", "→<table>&#32;" + "<!--x--></>".repeat(REPEAT__ >> 2) + "x", "→<table>&#32;" + "</>".repeat((REPEAT__ >> 2) - 1) + "<!----></>x"],
 		["main already does this right: bogus comments: no \">\" after any opener", "→" + "<!x<?y".repeat(REPEAT__), "→" + "<!x<?y".repeat(REPEAT__)],
 		["main already does this right: bogus comments: many", "→" + "<?x>".repeat(REPEAT__), "→" + "<?x>".repeat(REPEAT__)],
 		["main already does this right: text: many lone \"<\"", "→" + "< ".repeat(REPEAT__), "→" + "< ".repeat(REPEAT__ - 1) + "<"],

@@ -19,7 +19,8 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 //   unit, and the name after "#" and "@". So url( is a url token only where its "u" starts an ident: "#url(", "@url(",
 //   "\0url(", "1url(", "a\url(", "\41 url(" are hash, at-keyword, dimension or function tokens, and what follows them
 //   is scanned as code, with its strings vaulted.
-// - Comments are dropped. An unterminated "/*" and everything after it is vaulted as it is.
+// - Comments are dropped, except one between two tokens that would fuse without it, which stays as "/**/" (WI 47221).
+//   An unterminated "/*" and everything after it is vaulted as it is.
 // - A run of \r \n \t becomes nothing after an unescaped "{" "}" ";" "," or at either end of the input, otherwise one
 //   space (C3). Escaped delimiters are vaulted, so the scan never takes them for real ones.
 // - Declarations: the scan tracks the block stack (style rule, at-rule, @property), the bracket depth and the current
@@ -41,8 +42,8 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 //   ; , dropped, " !" to "!", ";}" to "}", ": " to ":", " {" to "{", and whitespace after "{" and before "}" dropped.
 //   The last one has a lookbehind so a long whitespace run is matched once, not again from each of its positions.
 //
-// Out of scope (WI 47221): a comment between two tokens that fuse once it is dropped ("opacity:1/**/0"), and function
-// names spelled with escapes (u\72l( is not taken for url().
+// A comment between two tokens that would fuse once it is dropped ("opacity:1/**/0"), and function names spelled with
+// escapes (u\72l( is url( too) are WI 47221's: see test/CssComments.Test.js.
 
 // Input size of the scaling tests, and their CPU bound (as in the MarkupScanners tests).
 const SIZE__ = 524288;
@@ -294,7 +295,7 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 		expectCases([
 			["\n@charset \"iso-8859-1\";\na{b:c}", "\n@charset \"iso-8859-1\";\na{b:c}"],
 			["/* x */@charset \"iso-8859-1\";\na { b : c }", "/* x */@charset \"iso-8859-1\";\na { b : c }"],
-			["@charset \"iso-8859-1\"/* text */;\na{content:\"\u00E9\"}", "@charset \"iso-8859-1\"/* text */;\na{content:\"\u00E9\"}"],
+			["@charset \"iso-8859-1\"/* text */;\na{content:\"\u00E9\"}", "@charset \"iso-8859-1\"/**/;a{content:\"\u00E9\"}"],
 			["@charset \"iso-8859-1\" ;\na { b : c }", "@charset \"iso-8859-1\" ;a{b:c}"],
 
 			// controls: a declaration already at the start, or a rule that is no declaration (any case, single quotes), is
@@ -400,7 +401,7 @@ describe("CSS reviewer probes (PLAN.md rounds r1-r15), each red on main", () =>
 			["a{border-radius:0px/1em}", "a{border-radius:0/1em}"],
 			["a{margin:0px.5em}", "a{margin:0px.5em}"],
 			["a{margin:0px+.5em}", "a{margin:0px+.5em}"],
-			["a{margin:0em/**/.5em}", "a{margin:0em.5em}"],
+			["a{margin:0em/**/.5em}", "a{margin:0em/**/.5em}"],
 			["a{margin:0px%}", "a{margin:0px%}"],
 			["a{margin:0pxem}", "a{margin:0pxem}"],
 			["a{scale:0px.5}", "a{scale:0px.5}"],
@@ -471,7 +472,10 @@ describe("CSS url( is a url token only at the start of an ident, each red on mai
 	{
 		expectCases([
 			["a{b:\\41 url(a \"b)0.5\")}", "a{b:\\41 url(a \"b)0.5\")}"],
-			["a{b:\\url(a \"b)0.5\")}", "a{b:\\url(a \"b)0.5\")}"],
+
+			// "\u" is a plain "u": \url( spells url(, a url token that ends at its first ")" (WI 47221; the tokenizer says bad-url
+			// "\url(a \"b)", then the number 0.5, then the string \")}"), so 0.5 is a number here
+			["a{b:\\url(a \"b)0.5\")}", "a{b:\\url(a \"b).5\")}"],
 			["a{b:\\41\nurl(a \"b)0.5\")}", "a{b:\\41\nurl(a \"b)0.5\")}"],
 			["a{b:\\41\r\nurl(a \"b)0.5\")}", "a{b:\\41\r\nurl(a \"b)0.5\")}"],
 			["a{b:x\\41 url(a \"b)0.5\")}", "a{b:x\\41 url(a \"b)0.5\")}"],
@@ -724,7 +728,7 @@ describe("CSS markers (U+0001) in the input", () =>
 		const mark = "\u0001";
 		const cases = [
 			["{", "{"], ["}", "}"], [";", ";"], [":", ":"], [",", ","], [" ", " "], ["  ", " "], [" !", "!"], ["\f", "\f"],
-			["/*x*/", ""], ["\"s\"", "\"s\""], ["url(x)", "url(x)"], ["style(x)", "style(x)"], ["#aabbcc", "#abc"],
+			["/*x*/", "/**/"], ["\"s\"", "\"s\""], ["url(x)", "url(x)"], ["style(x)", "style(x)"], ["#aabbcc", "#abc"],
 			[" 0.5", " .5"], ["\\31 ", "\\31 "], ["(", "("], [")", ")"], ["[", "["], ["]", "]"], ["@x", "@x"], ["--x", "--x"],
 			[" { ", "{"], [" : ", ":"], [" } ", "}"], ["; ", ";"], [", ", ","]
 		];
@@ -797,6 +801,13 @@ describe("CSS scan stays linear on long runs of each loop's worst case", { timeo
 		["unclosed brackets", "([", n => [`${PREFIX__}b{c:${"([".repeat(n)}}`, `${MINIFIED_PREFIX__}b{c:${"([".repeat(n)}}`]],
 		["unterminated comments", "/*x", n => [`${PREFIX__}${"/*x".repeat(n)}`, `${MINIFIED_PREFIX__}${"/*x".repeat(n)}`]],
 		["many comments", "/**/", n => [`${PREFIX__}b{c:${"/**/".repeat(n)}d}`, `${MINIFIED_PREFIX__}b{c:d}`]],
+		["WI 47221: comments kept between tokens", "a/**/", n => [`${PREFIX__}b{c:${"a/**/".repeat(n)}d}`, `${MINIFIED_PREFIX__}b{c:${"a/**/".repeat(n)}d}`]],
+		["WI 47221: one run of comments between tokens", "/**/", n => [`${PREFIX__}b{margin:1px${"/**/".repeat(n)}2px}`, `${MINIFIED_PREFIX__}b{margin:1px/**/2px}`]],
+		["WI 47221: comments between spaces", " /**/", n => [`${PREFIX__}b{margin:1px${" /**/".repeat(n)} 2px}`, `${MINIFIED_PREFIX__}b{margin:1px 2px}`]],
+		["WI 47221: escapes in one function name", "\\75", n => [`${PREFIX__}b{c:${"\\75".repeat(n)}(0.5)}`, `${MINIFIED_PREFIX__}b{c:${"\\75".repeat(n)}(.5)}`]],
+		["WI 47221: escaped url( openers", "u\\72l(", n => [`${PREFIX__}b{c:${"u\\72l(".repeat(n)}0.5}`, `${MINIFIED_PREFIX__}b{c:${"u\\72l(".repeat(n)}0.5}`]],
+		["WI 47221: CDO before an escaped url(", "<!--u\\72l(", n => [`${PREFIX__}b{c:${"<!--u\\72l(".repeat(n)}0.5}`, `${MINIFIED_PREFIX__}b{c:${"<!--u\\72l(".repeat(n)}0.5}`]],
+		["WI 47221: unclosed escaped style(", "st\\79le(", n => [`${PREFIX__}b{c:if(${"st\\79le(".repeat(n)}`, `${MINIFIED_PREFIX__}b{c:if(${"st\\79le(".repeat(n)}`]],
 		["hex escapes", "\\31 ", n => [`${PREFIX__}.a${"\\31 ".repeat(n)}{c:d}`, `${MINIFIED_PREFIX__}.a${"\\31 ".repeat(n)}{c:d}`]],
 		["backslashes", "\\\\", n => [`${PREFIX__}${"\\\\".repeat(n)}`, `${MINIFIED_PREFIX__}${"\\\\".repeat(n)}`]],
 		["backslash newlines", "\\\n", n => [`${PREFIX__}a${"\\\n".repeat(n)}`, `${MINIFIED_PREFIX__}a${"\\\n".repeat(n)}`]],

@@ -1,4 +1,4 @@
-import { stripHtmlCommentsOnce__, stripSvgComments__ } from "../src/MarkupScanners.js";
+import { stripSvgComments__ } from "../src/MarkupScanners.js";
 import { cpuMs__, difference__ } from "./TestSupport.js";
 
 // What src/MarkupScanners.js does and why. The explanation lives here, not in src: src is copied verbatim into the
@@ -8,18 +8,15 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 // overflowed V8's regexp stack with "RangeError: Maximum call stack size exceeded" (WI 47095). Each helper returns
 // exactly what its regex's replaceAll returned at its call site. The pre/code, void-tag, href/src and CSS comment
 // helpers of that change are gone: 47101's scanners read those constructs themselves, so no minifier calls them (the
-// HTML and CSS linear-time workloads that covered them live in the HTML, CSS and SVG test files).
-// - stripHtmlCommentsOnce__: each comment ends at the first "-->" after its "<!--"; an unclosed "<!--" and everything
-//   after it stays. No "-->" after one "<!--" means none after any later one, so the scan stops there instead of
-//   retrying every later "<!--" (quadratic on "<!--x<!--x..."). One pass; the minifier repeats it until nothing changes.
+// HTML and CSS linear-time workloads that covered them live in the HTML, CSS and SVG test files). The HTML comment
+// helper went with WI 47221: the HTML scanner reads comments as the parser does and src/HtmlComments.js decides them.
 // - stripSvgComments__: the body can hold no "--" and cannot end in "-", so a comment closes at the first "--" after its
 //   opening "--", and only if [\t\n\r ]* and ">" follow; otherwise the next "<!" is tried.
 
-// Oracles: the regexes these helpers replaced, verbatim from src/index.js before the change, except the SVG one, which
-// lost its `[\n\r]` branch (inside `[^-]` already: same matches, same captures).
-// Each helper must return exactly what its regex's replaceAll returned, on every input the regex did not overflow on.
+// Oracle: the regex this helper replaced, verbatim from src/index.js before the change, except that it lost its `[\n\r]`
+// branch (inside `[^-]` already: same matches, same captures).
+// The helper must return exactly what its regex's replaceAll returned, on every input the regex did not overflow on.
 const ORACLES__ = {
-	htmlComments: [stripHtmlCommentsOnce__, /<!--[\D\d]*?-->/giu, ""],
 	svgComments: [stripSvgComments__, /<![\t\n\r ]*(--([^-]|-[^-])*--[\t\n\r ]*)>/gu, ""]
 };
 
@@ -119,8 +116,6 @@ describe("MarkupScanners helpers match the regexes they replaced", { timeout: TI
 	it("fixtures the full minifiers would hide", () =>
 	{
 		const fixtures = [
-			["htmlComments", "<!--><!---->x<!-- a --->"],
-			["htmlComments", "<!--<!--x-->-->"],
 			["svgComments", "<!--->x<!---->y<!-- a --->z<! \n-- b -- \t>"],
 			["svgComments", "<!--x--oops<!--y-->"],
 			["svgComments", "<!--a-b--c-->"]
@@ -137,12 +132,10 @@ describe("MarkupScanners helpers match the regexes they replaced", { timeout: TI
 
 describe("MarkupScanners helpers stay linear on failed-candidate workloads", { timeout: TIMEOUT_MS__ }, () =>
 {
-	const [htmlHelper, htmlRegex] = ORACLES__.htmlComments;
 	const [svgHelper, svgRegex, svgReplacement] = ORACLES__.svgComments;
 
 	// [name, helper, old regex, input of size n, expected output of size n]
 	const workloads = [
-		["html: no \"-->\" after any opener", htmlHelper, text => text.replaceAll(htmlRegex, ""), n => "\u2192" + "<!--x".repeat(n), n => "\u2192" + "<!--x".repeat(n)],
 		["svg: every comment fails after its closing \"--\"", svgHelper, text => text.replaceAll(svgRegex, svgReplacement), n => "\u2192" + "<!--a--  x".repeat(n), n => "\u2192" + "<!--a--  x".repeat(n)],
 		["svg: nested openers before a long whitespace run", svgHelper, text => text.replaceAll(svgRegex, svgReplacement), n => "\u2192" + "<!--<!--".repeat(n) + " ".repeat(n) + "X-->", n => "\u2192" + "<!--<!--".repeat(n - 1) + "<!--"]
 	];

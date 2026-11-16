@@ -58,6 +58,8 @@ const ZERO_PROPERTIES__ = new Set([
 	"flex-basis"
 ]);
 const ASCII_NAME__ = /^[-A-Za-z]+$/u;
+const MAX_NAME__ = 12;
+const COMMENT_GAPS__ = new Set(["{", "}", ";", ":", ",", ")", "[", "]"]);
 const CHARSET__ = /^@charset "[^"]*";/u;
 const UNIT_NAME__ = /^[A-Za-z]{2,4}$/u;
 
@@ -257,7 +259,7 @@ function stringEnd__(content, index)
 
 		if (code === 0x5C)
 		{
-			end += content.charCodeAt(end + 1) === 0x0D && content.charCodeAt(end + 2) === 0x0A ? 3 : 2;
+			end = escapeEnd__(content, end);
 		}
 		else if (isNewlineCode__(code))
 		{
@@ -319,6 +321,53 @@ function isQuotedUrl__(content, index)
 function asciiLower__(text)
 {
 	return ASCII_NAME__.test(text) ? text.toLowerCase() : "";
+}
+
+/**
+ * @description Reads the character an escape stands for; anything outside ASCII is one placeholder, as no compared name has one.
+ * @param {string} content - CSS.
+ * @param {number} index - Index of the backslash.
+ * @return {string} The character.
+ */
+function escapedChar__(content, index)
+{
+	if (!isHexCode__(content.charCodeAt(index + 1))) return content[index + 1];
+
+	const value = Number.parseInt(content.slice(index + 1, escapeEnd__(content, index)), 16);
+
+	return value < 0x80 ? String.fromCharCode(value) : "\uFFFD";
+}
+
+/**
+ * @description Reads a name run to the name it spells (CSS Syntax 4.3.7), for the names that are compared. A name longer than the
+ * longest compared one is not read to its end: it is not any of them, and a run can be millions of characters long.
+ * @param {string} content - CSS.
+ * @param {number} start - Start of the run.
+ * @param {number} end - End of the run.
+ * @return {string} The name in ASCII lowercase when it is letters and "-" only and not longer than "-moz-element", else "".
+ */
+function runName__(content, start, end)
+{
+	let name = "";
+	let index = start;
+
+	while (index < end)
+	{
+		if (name.length === MAX_NAME__) return "";
+
+		if (content.charCodeAt(index) === 0x5C)
+		{
+			name += escapedChar__(content, index);
+			index = escapeEnd__(content, index);
+		}
+		else
+		{
+			name += content[index];
+			index++;
+		}
+	}
+
+	return asciiLower__(name);
 }
 
 /**
@@ -852,6 +901,11 @@ function punct__(state, code)
 	{
 		semicolon__(state);
 	}
+	else if (code === 0x3C && state.content.startsWith("!--", state.index + 1))
+	{
+		state.index += 4;
+		state.last = "-";
+	}
 	else
 	{
 		if (code === 0x3A && state.verbatim === -1 && state.parens === 0 && !state.colon) colon__(state);
@@ -978,7 +1032,7 @@ function identifier__(state)
 		return;
 	}
 
-	const name = escaped || end - start > 12 ? "" : asciiLower__(content.slice(start, end));
+	const name = runName__(content, start, end);
 
 	if (name === "url" && !isQuotedUrl__(content, end + 1))
 	{
@@ -1052,26 +1106,71 @@ function newlines__(state)
 }
 
 /**
- * @description Handles a comment: dropped, kept inside a verbatim span; an unterminated one is vaulted to the end.
+ * @description Finds the end of a run of adjacent terminated comments.
+ * @param {string} content - CSS.
+ * @param {number} index - Index of the first "/*".
+ * @return {number} Index after the last terminated comment of the run (a later unterminated one is not part of it).
+ */
+function commentsEnd__(content, index)
+{
+	let end = index;
+
+	while (content.startsWith("/*", end))
+	{
+		const close = content.indexOf("*/", end + 2);
+
+		if (close === -1) break;
+		end = close + 2;
+	}
+
+	return end;
+}
+
+/**
+ * @description Tells whether dropping a comment run leaves its two neighbours as separate tokens.
+ * @param {string} left - Last character the scan emitted, whitespace when a newline run is pending, "" at the start.
+ * @param {string} right - First input character after the run, "" at the end.
+ * @return {boolean} False when the run must stay as "/**\/".
+ */
+function dropsComment__(left, right)
+{
+	if (left === "" || right === "") return true;
+	if (left === MARK__) return false;
+
+	return isWhitespaceCode__(left.charCodeAt(0)) || isWhitespaceCode__(right.charCodeAt(0)) || COMMENT_GAPS__.has(left) || COMMENT_GAPS__.has(right) || left === "(";
+}
+
+/**
+ * @description Handles a comment: inside a verbatim span it is kept as written; an unterminated one is vaulted to the end;
+ * a run of terminated ones is dropped, or kept as one "/**\/" when the tokens next to it would fuse without it.
  * @param {Object} state - Scanner state.
  */
 function comment__(state)
 {
-	const close = state.content.indexOf("*/", state.index + 2);
-	const end = close === -1 ? state.content.length : close + 2;
+	const content = state.content;
+	const close = content.indexOf("*/", state.index + 2);
 
-	if (state.verbatim === -1 && close === -1)
+	if (state.verbatim !== -1)
 	{
-		state.pending = false;
-		emitVault__(state, state.index, end);
+		state.index = close === -1 ? content.length : close + 2;
 	}
-	else if (state.verbatim === -1)
+	else if (close === -1)
 	{
+		emitVault__(state, state.index, content.length);
+	}
+	else
+	{
+		const end = commentsEnd__(content, state.index);
+
 		flush__(state, state.index);
 		state.copied = end;
-	}
+		state.index = end;
 
-	state.index = end;
+		if (!dropsComment__(state.pending ? " " : state.last, content.charAt(end)))
+		{
+			state.parts.push(vault__(state.spans, "/**/"));
+		}
+	}
 }
 
 /**

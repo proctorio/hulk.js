@@ -1,9 +1,9 @@
+import { MARK_BOUNDARY__, MARK_COMMENT__, MARK_PREFIX__, MARK_SUFFIX__, resolveComments__ } from "./HtmlComments.js";
 import { isTextElement__, payload__, textEnd__ } from "./HtmlPayload.js";
 import {
 	ESCAPES__, asciiLower__, attributeValue__, cachedSearch__, caseless__, collapseSpace__, escapeMarks__, isAsciiAlpha__, readTag__, searchFrom__,
 	skipSpace__, tagSource__, tagText__, trimHtmlSpace__
 } from "./HtmlTags.js";
-import { stripHtmlCommentsOnce__ } from "./MarkupScanners.js";
 import { MARK__, restoreVault__, vault__ } from "./Vault.js";
 
 const TEXT__ = 0;
@@ -22,6 +22,7 @@ const DOCTYPE_PART__ = 4;
 
 const GATE__ = new RegExp(`<(?:${["select", "frameset", "noscript", "col"].map(caseless__).join("|")})`, "u");
 const WHITE_SPACE__ = /white-?space/iu;
+const TABLE_TAG__ = /<(?:table|caption|col|t(?:body|foot|r|d|h))/iu;
 const STYLE_END__ = new RegExp(`</${caseless__("style")}[\\t\\n\\f\\r />]`, "gu");
 const FOREIGN_OPEN__ = /<(?:svg|math)[\t\n\f\r />]/iu;
 const STYLE_ATTRIBUTE__ = /style[\t\n\f\r ]*=/iu;
@@ -110,12 +111,12 @@ function mayHoldEscape__(rest, foreign = false)
  */
 function latch__(state, open)
 {
-	const { text, spans, block } = state;
+	const { text, block } = state;
 	const rest = text.slice(block === null ? open : block.start);
 
 	if (mayHoldEscape__(rest, state.foreign.length > 0)) state.keep = true;
 
-	state.parts.push(block === null ? `<${vault__(spans, rest.slice(1))}` : vault__(spans, rest));
+	state.parts.push(block === null ? boundary__(state, rest.slice(1), true) : boundary__(state, rest));
 	state.block = null;
 	state.done = true;
 	advance__(state, text.length);
@@ -193,13 +194,34 @@ function popTo__(state, depth)
  * @param {Object} state - Scanner state.
  * @param {string} source - The construct as it is to be restored, starting with "<".
  * @param {boolean} closed - Whether it ends with ">".
+ * @param {number} [kind] - MARK_BOUNDARY__, or MARK_COMMENT__ for a comment the comment pass may drop.
  * @return {string} The marker text.
  */
-function tagLike__(state, source, closed)
+function tagLike__(state, source, closed, kind = MARK_BOUNDARY__)
 {
 	const tail = closed ? ">" : "";
+	const marker = `<${vault__(state.spans, source.slice(1, source.length - tail.length))}${tail}`;
 
-	return `<${vault__(state.spans, source.slice(1, source.length - tail.length))}${tail}`;
+	state.marks.set(state.spans.length - 1, kind | MARK_PREFIX__ | (closed ? MARK_SUFFIX__ : 0));
+	if (kind === MARK_COMMENT__) state.comments = true;
+
+	return marker;
+}
+
+/**
+ * @description Vaults a construct that is not character data, and notes it as one the comment pass must not read across.
+ * @param {Object} state - Scanner state.
+ * @param {string} source - The construct as it is to be restored.
+ * @param {boolean} [prefixed] - Whether the marker follows a "<" the source does not repeat (the source then starts after it).
+ * @return {string} The marker text.
+ */
+function boundary__(state, source, prefixed = false)
+{
+	const marker = vault__(state.spans, source);
+
+	state.marks.set(state.spans.length - 1, prefixed ? MARK_BOUNDARY__ | MARK_PREFIX__ : MARK_BOUNDARY__);
+
+	return prefixed ? `<${marker}` : marker;
 }
 
 /**
@@ -360,7 +382,7 @@ function htmlEnd__(state, tag)
 		if (block.depth === 0)
 		{
 			state.block = null;
-			state.parts.push(vault__(state.spans, state.text.slice(block.start, tag.end)));
+			state.parts.push(boundary__(state, state.text.slice(block.start, tag.end)));
 		}
 	}
 	else emitTag__(state, tag, true);
@@ -480,16 +502,30 @@ function joinsNeighbour__(code)
 }
 
 /**
- * @description Passes a comment through for the comment loop; one right after a CR or a high surrogate is vaulted, since removing it could join that character and the one after it.
+ * @description Vaults a terminated comment as a tag-like marker for the comment pass; one right after a CR or a high surrogate is a
+ * boundary the pass keeps as written, since removing it could join that character and the one after it. An unterminated comment
+ * runs to the end of the text and stays in it, its U+0001 vaulted.
  * @param {Object} state - Scanner state.
  * @param {number} open - Index of its "<!--".
  * @return {void}
  */
 function comment__(state, open)
 {
+	const { text } = state;
 	const end = commentEnd__(state, open);
+	const source = text.slice(open, end);
 
-	if (state.block === null) emitKind__(state, NOTE_PART__, joinsNeighbour__(state.text.charCodeAt(open - 1)) ? vault__(state.spans, state.text.slice(open, end)) : escapeMarks__(state, open, end));
+	if (state.block === null)
+	{
+		if (source.endsWith("-->") || source.endsWith("--!>"))
+		{
+			emitKind__(state, NOTE_PART__, tagLike__(state, source, true, joinsNeighbour__(text.charCodeAt(open - 1)) ? MARK_BOUNDARY__ : MARK_COMMENT__));
+		}
+		else
+		{
+			emitKind__(state, NOTE_PART__, escapeMarks__(state, open, end));
+		}
+	}
 
 	advance__(state, end);
 }
@@ -532,7 +568,7 @@ function cdata__(state, open)
 		return;
 	}
 
-	emit__(state, vault__(state.spans, text.slice(open, end)));
+	emit__(state, boundary__(state, text.slice(open, end)));
 	advance__(state, end);
 }
 
@@ -565,7 +601,8 @@ function kind__(state, open)
 /**
  * @description Scans HTML in document order, vaulting what must stay byte-exact.
  * @param {string} text - HTML.
- * @return {Object} The scanner state: parts of the vaulted text and the vault's spans.
+ * @return {Object} The scanner state: parts of the vaulted text, the vault's spans, the marks of the vaults the comment pass reads, and
+ * whether the text has a comment for that pass to decide.
  */
 function scan__(text)
 {
@@ -574,6 +611,8 @@ function scan__(text)
 		spans: [],
 		parts: [],
 		kinds: new Map(),
+		marks: new Map(),
+		comments: false,
 		foreign: [],
 		scopes: [],
 		scope: COLLAPSE__,
@@ -610,7 +649,7 @@ function scan__(text)
 
 	flush__(state, text.length);
 
-	if (state.block !== null) state.parts.push(vault__(state.spans, text.slice(state.block.start)));
+	if (state.block !== null) state.parts.push(boundary__(state, text.slice(state.block.start)));
 
 	return state;
 }
@@ -661,21 +700,16 @@ function dropBetweenTags__(parts, kinds)
  */
 function minifyHtml__(content)
 {
-	const { parts, spans, kinds, keep: scanned } = scan__(content);
+	const { parts, spans, kinds, marks, comments, keep: scanned } = scan__(content);
 	const keep = scanned || WHITE_SPACE__.test(content);
 
 	dropBetweenTags__(parts, kinds);
 
 	let minified = collapseSpace__(parts.join(""), keep);
-	let previous;
 
 	if (!keep) minified = trimHtmlSpace__(minified);
 
-	do
-	{
-		previous = minified;
-		minified = stripHtmlCommentsOnce__(minified);
-	} while (minified !== previous);
+	if (comments) minified = resolveComments__(minified, marks, spans, TABLE_TAG__.test(content));
 
 	return restoreVault__(spans, keep ? minified : trimHtmlSpace__(minified));
 }

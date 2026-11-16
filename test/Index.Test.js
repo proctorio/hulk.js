@@ -725,23 +725,23 @@ newlines</pre>
 		expect(minified).toBe("<div>before<br>after<hr></div>");
 	});
 
-	it("minify HTML fully removes nested comments that would reform across a single pass", () =>
+	it("minify HTML ends a comment at its first '-->' and a bogus comment at its first '>'", () =>
 	{
-		// a single non-repeated pass would strip "<!<!---->-->-->" down to "<!-->-->", which is
-		// itself still a matchable "<!--...-->" sequence - repeating the pass until nothing
-		// changes removes it completely (CodeQL js/incomplete-multi-character-sanitization)
-		const html = "<!<!---->-->-->";
+		// "<!<!---->" is one bogus comment (it ends at its first ">"), so what follows is text and stays; a
+		// regex removing "<!--...-->" over the text found a comment in it and, run to a fixed point, deleted all of
+		// it (WI 47221: the comments are read as the HTML parser reads them, one pass, no loop)
+		expect(minify__("<!<!---->-->-->", "html")).toBe("<!<!---->-->-->");
 
-		const minified = minify__(html, "html");
-
-		expect(minified).toBe("");
+		// a comment ends at its first "-->": "-->" after it is text
+		expect(minify__("<p>a<!--b<!--c-->d-->e</p>", "html")).toBe("<p>ad-->e</p>");
+		expect(minify__("<!--<!--x-->-->", "html")).toBe("-->");
 	});
 
-	it("minify HTML leaves an unterminated comment untouched", () =>
+	it("minify HTML keeps an unterminated comment", () =>
 	{
-		// no closing "-->" anywhere, so the regex never matches at all - unlike a real
+		// no closing "-->" anywhere, so the comment is never closed - unlike a real
 		// browser (which would treat this as EOF-in-comment and drop the rest of the
-		// document), this is left as-is
+		// document), it stays in the text (its whitespace collapses like any other text, as before)
 		const html = "before<!--unterminated";
 
 		const minified = minify__(html, "html");
@@ -752,7 +752,7 @@ newlines</pre>
 	it("minify HTML removes multiple adjacent separate comments", () =>
 	{
 		// two ordinary, non-nested comments back-to-back - not the adversarial case, just
-		// confirming the loop still behaves correctly for normal multi-comment input
+		// confirming each of them is dropped on its own
 		const html = "<!--a--><!--b-->";
 
 		const minified = minify__(html, "html");
