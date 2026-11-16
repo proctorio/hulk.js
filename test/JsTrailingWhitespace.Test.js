@@ -40,6 +40,12 @@ const RUN__ = 131072;
 // CPU-time bound of every scaling test, as in the markup and JS tests
 const CPU_MS__ = 3000;
 
+// CPU-time bound of the 8 MB rows. Here, without and with the V8 coverage CI runs: one long run 16 to 28 ms and 208 to
+// 258 ms, 2M short lines 89 to 124 ms and 388 to 429 ms. One CI agent took 3156 ms (build 203741, row not named). The
+// old regex throws at this size on Node 24.21.0 and needs 19 s at 128K, growing with the square; a regression of a few
+// seconds at 8 MB goes unseen here, the 128K rows catch it
+const BIG_CPU_MS__ = 20000;
+
 // generous per-test limit: v8 coverage slows the large inputs down several times over
 const SLOW_TEST_MS__ = 60000;
 
@@ -379,7 +385,7 @@ describe("the whitespace step runs in linear time", () =>
 
 				// a concatenation is a rope until something reads it: read it inside the timed call
 				output.charCodeAt(0);
-			})).toBeLessThan(CPU_MS__);
+			})).toBeLessThan(BIG_CPU_MS__);
 			expect(difference__(output, expected)).toBeNull();
 		}
 	}, SLOW_TEST_MS__);
