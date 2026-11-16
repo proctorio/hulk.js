@@ -1086,7 +1086,6 @@ describe("HTML diff review round 10", () =>
 			"<svg><style>.a{white&#45;space:pre}</style></svg><div class=\"a\">x  y</div>",
 			"<math><style>.a{white&#45;space:pre}</style></math><div class=\"a\">x  y</div>",
 			"<svg><style><![CDATA[/* </style> */.a{whit\\65-space:pre}]]></style></svg><div class=\"a\">x  y</div>",
-			"<svg><style>.a{color:red}</style></svg><div>x  y\\z</div>",
 			"<style>.b{x:y}</style><style>.a{whit\\65-space:pre}</style><div class=\"a\">x  y</div>",
 			"<style>.a{x:y}</styles><style>.a{whit\\65-space:pre}</style><div>x  y</div>",
 			"<style>.a{x:y}</styles>.a{whit\\65-space:pre}</style><div>x  y</div>",
@@ -1106,6 +1105,7 @@ describe("HTML diff review round 10", () =>
 		expect(html("<style>.a{color:red}</style><div>x  y\\z</div>")).toBe("<style>.a{color:red}</style><div>x y\\z</div>");
 		expect(html("<style>.a{color:red}</style>\\<style>.b{color:red}</style><div>x  y</div>")).toBe("<style>.a{color:red}</style>\\<style>.b{color:red}</style><div>x y</div>");
 		expect(html("<svg><style>.a{color:red}</style></svg><div>x  y</div>")).toBe("<svg><style>.a{color:red}</style></svg><div>x y</div>");
+		expect(html("<svg><style>.a{color:red}</style></svg><div>x  y\\z</div>")).toBe("<svg><style>.a{color:red}</style></svg><div>x y\\z</div>");
 		expect(html("<svg><style title=\"a&amp;b\">.a{color:red}</style></svg><div>x  y</div>")).toBe("<svg><style title=\"a&amp;b\">.a{color:red}</style></svg><div>x y</div>");
 		expect(html("<div>x  y\\z &amp;</div><svg><style>.a{color:red}</style></svg>")).toBe("<div>x y\\z &amp;</div><svg><style>.a{color:red}</style></svg>");
 		expect(html("<style>.a::before{content:\"&amp;\"}</style><div>x  y</div>")).toBe("<style>.a::before{content:\"&amp;\"}</style><div>x y</div>");
@@ -1113,6 +1113,62 @@ describe("HTML diff review round 10", () =>
 		expect(html("<style>.a{color:red}</style\n><div>x  y\\z</div>")).toBe("<style>.a{color:red}</style><div>x y\\z</div>");
 		expect(html("<STYLE>.a{color:red}</STYLE><div>x  y\\z</div>")).toBe("<STYLE>.a{color:red}</STYLE><div>x y\\z</div>");
 		expect(html("<style data-x=\"a\\b\">.a{color:red}</style><div>x  y</div>")).toBe("<style data-x=\"a\\b\">.a{color:red}</style><div>x y</div>");
+	});
+
+	it("diff r12: a foreign style element whose text is split by markup keeps the document's text whitespace, and one of plain text does not (red on main)", () =>
+	{
+		// the stylesheet text is its text nodes joined: a CDATA section, a comment or a child element can sit inside a name
+		const kept = [
+			"<svg><style>.a{white<![CDATA[-]]>space:pre}</style></svg><div class=\"a\">x  y</div>",
+			"<math><style>.a{white<![CDATA[-]]>space:pre}</style></math><div class=\"a\">x  y</div>",
+			"<svg><style>.a{white<g></g>-space:pre}</style></svg><div class=\"a\">x  y</div>",
+			"<svg><style><![CDATA[.a{color:red}]]></style></svg><div>x  y</div>",
+			"<svg><style>.a{color:red}<![CDATA[ </style> ]]></style></svg><div>x  y</div>",
+			"<div>x  y</div><svg><style>.a{color:red}"
+		];
+
+		for (const input of kept) expect(html(input)).toBe(input);
+
+		// the comment goes (the comment loop's), and the document's whitespace stays
+		expect(html("<svg><style>.a{white<!-- -->-space:pre}</style></svg><div class=\"a\">x  y</div>")).toBe("<svg><style>.a{white-space:pre}</style></svg><div class=\"a\">x  y</div>");
+
+		// a text node alone has nothing to join: as before, in foreign content and in HTML (where CDATA is plain raw text)
+		expect(html("<svg><style>.a{color:red}</style></svg><div>x  y</div>")).toBe("<svg><style>.a{color:red}</style></svg><div>x y</div>");
+		expect(html("<style>.a{color:red}<![CDATA[x]]></style><div>x  y</div>")).toBe("<style>.a{color:red}<![CDATA[x]]></style><div>x y</div>");
+	});
+
+	it("diff r12: text after the scan stopped that holds a style element and an svg or math element keeps the document's text whitespace (red on main)", () =>
+	{
+		const stop = "<pre><table></pre></table>";
+		const kept = [
+			`<p class="a">x  y</p>${stop}<svg><style>.a{white<![CDATA[-]]>space:pre}</style></svg>`,
+			`<p class="a">x  y</p>${stop}<math><style>.a{color:red}</style></math>`,
+			`<p class="a">x  y</p>${stop}<style>.a{color:red}</style><SVG></SVG>`,
+			`<p class="a">x  y</p>${stop}<style>.a{color:red}</style><svg/>`
+		];
+
+		for (const input of kept) expect(html(input)).toBe(input);
+
+		// controls: a style element with neither, or an svg without one
+		expect(html(`<p class="a">x  y</p>${stop}<style>.a{color:red}</style><p>a &amp; b</p>`)).toBe(`<p class="a">x y</p>${stop}<style>.a{color:red}</style><p>a &amp; b</p>`);
+		expect(html(`<p class="a">x  y</p>${stop}<svg><g></g></svg>`)).toBe(`<p class="a">x y</p>${stop}<svg><g></g></svg>`);
+	});
+
+	it("diff r12: a comment right after a high surrogate stays, since removing it would join the halves of a pair (red on main)", () =>
+	{
+		// two lone halves are two replacement characters once encoded; joined they are one character
+		const witness = "<svg><text>a\uD83D<!-- text -->\uDE00b</text></svg>";
+
+		expect(html(witness)).toBe(witness);
+		expect(html("<p>a\uD83D<!-- x -->\uDE00b</p>")).toBe("<p>a\uD83D<!-- x -->\uDE00b</p>");
+		expect(html("<p>a\uD83D<!--a--><!--b-->\uDE00b</p>")).toBe("<p>a\uD83D<!--a-->\uDE00b</p>");
+
+		// controls: after a whole pair, after a low surrogate, after a character below and above the range
+		expect(html("<p>\uD83D\uDE00<!-- x -->b</p>")).toBe("<p>\uD83D\uDE00b</p>");
+		expect(html("<p>a\uDE00<!-- x -->b</p>")).toBe("<p>a\uDE00b</p>");
+		expect(html("<p>a\uD7FF<!-- x -->\uDE00b</p>")).toBe("<p>a\uD7FF\uDE00b</p>");
+		expect(html("<p>a\uE000<!-- x -->\uDE00b</p>")).toBe("<p>a\uE000\uDE00b</p>");
+		expect(html("<!-- x --><p>a</p>")).toBe("<p>a</p>");
 	});
 
 	it("diff r10: text after the scan stopped is not read, so a style in it that could spell white-space keeps the document's whitespace (red on main)", () =>
@@ -1127,7 +1183,6 @@ describe("HTML diff review round 10", () =>
 			"<p>a  b</p><div style=\"whit\\65-space:pre\" <p>c  d</p>",
 			`<p>a  b</p>${stop}<div STYLE="whit\\65-space:pre">c  d</div>`,
 			`<p>a  b</p>${stop}<svg><style>.a{white&#45;space:pre}</style></svg>`,
-			`<p>a  b</p>${stop}<style>.a::before{content:"&amp;"}</style>`,
 			`<p>a  b</p>${stop}<div style\t="whit\\65-space:pre">c  d</div>`,
 			`<p>a  b</p>${stop}<style media="all">.a{whit\\65-space:pre}</style>`,
 			`<p>a  b</p>${stop}<p>c  d</p><style>.a{color:red}</style>\\`
@@ -1137,6 +1192,7 @@ describe("HTML diff review round 10", () =>
 
 		// controls: a rest with no style that holds a backslash or a "&", or a style with neither, is as before
 		expect(html(`<p>a  b</p>${stop}<style>.a{color:red}</style>`)).toBe(`<p>a b</p>${stop}<style>.a{color:red}</style>`);
+		expect(html(`<p>a  b</p>${stop}<style>.a::before{content:"&amp;"}</style>`)).toBe(`<p>a b</p>${stop}<style>.a::before{content:"&amp;"}</style>`);
 		expect(html(`<p>a  b</p>${stop}<div style="color:red">c  d</div>`)).toBe(`<p>a b</p>${stop}<div style="color:red">c  d</div>`);
 		expect(html(`<p>a  b</p>${stop}<p>c\\d &amp; e</p>`)).toBe(`<p>a b</p>${stop}<p>c\\d &amp; e</p>`);
 	});

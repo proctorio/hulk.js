@@ -19,7 +19,7 @@ const VERBATIM__ = 2;
 const GATE__ = new RegExp(`<(?:${["select", "frameset", "noscript", "col"].map(caseless__).join("|")})`, "u");
 const WHITE_SPACE__ = /white-?space/iu;
 const STYLE_END__ = new RegExp(`</${caseless__("style")}[\\t\\n\\f\\r />]`, "gu");
-const ESCAPES_SEARCH__ = new RegExp(ESCAPES__.source, "gu");
+const FOREIGN_OPEN__ = /<(?:svg|math)[\t\n\f\r />]/iu;
 const STYLE_ATTRIBUTE__ = /style[\t\n\f\r ]*=/iu;
 const STYLE_ELEMENT__ = /<style[\t\n\f\r />]/iu;
 const HIDDEN_STATE__ = new RegExp(`<(?:!--|(?:${["script", "style", "xmp", "iframe", "noembed", "noframes", "noscript", "textarea", "title", "plaintext", "svg", "math"].map(caseless__).join("|")})[\\t\\n\\f\\r />])`, "u");
@@ -74,13 +74,13 @@ function emitTag__(state, tag, html)
 }
 
 /**
- * @description Tells whether text the scan will not read could spell white-space in a style, with a character reference or an escape.
+ * @description Tells whether text the scan will not read could spell white-space in a style, with a character reference, an escape or markup that splits the text.
  * @param {string} rest - The unscanned text.
- * @return {boolean} True when the text has a style attribute or element and a "&" or a backslash.
+ * @return {boolean} True when the text has a style attribute and a "&" or a backslash, or a style element and a backslash or an svg or math element.
  */
 function mayHoldEscape__(rest)
 {
-	return (STYLE_ATTRIBUTE__.test(rest) || STYLE_ELEMENT__.test(rest)) && ESCAPES__.test(rest);
+	return (STYLE_ATTRIBUTE__.test(rest) && ESCAPES__.test(rest)) || (STYLE_ELEMENT__.test(rest) && (rest.includes("\\") || FOREIGN_OPEN__.test(rest)));
 }
 
 /**
@@ -381,14 +381,19 @@ function startTag__(state, open)
 }
 
 /**
- * @description Tells whether a style element's content can hold an escape in a property name: a backslash, or in foreign content a "&" too.
+ * @description Tells whether a style element's content can spell a property name other than as plain text: an escape, or in foreign content a reference or markup that splits the text.
  * @param {Object} state - Scanner state.
  * @param {Object} tag - The style start tag.
- * @return {boolean} True when one lies between the tag and the next "</style" (in foreign content, anywhere after the tag: CDATA and comments can hide that end tag).
+ * @return {boolean} True for a backslash before the next "</style" (HTML, where the text is raw); in foreign content, true unless the text up to the next "<" is free of "&" and backslash and that "<" starts the end tag.
  */
 function styleHoldsEscape__(state, tag)
 {
-	if (state.foreign.length > 0) return state.nextEscape(tag.end) !== -1;
+	if (state.foreign.length > 0)
+	{
+		const markup = state.nextMarkup(tag.end);
+
+		return markup === -1 || state.nextStyleEnd(markup) !== markup || ESCAPES__.test(state.text.slice(tag.end, markup));
+	}
 
 	const slash = state.nextBackslash(tag.end);
 	const end = state.nextStyleEnd(tag.end);
@@ -432,7 +437,17 @@ function commentEnd__(state, open)
 }
 
 /**
- * @description Passes a comment through for the comment loop; one right after a CR is vaulted, since removing it could join that CR and a line feed after it into one line break.
+ * @description Tells whether the character before a comment would join what follows the comment into one unit once the comment is gone.
+ * @param {number} code - The code unit before the comment (NaN at the start of the text).
+ * @return {boolean} True for CR (a LF after it makes one line break) and a high surrogate (a low one after it makes one character).
+ */
+function joinsNeighbour__(code)
+{
+	return code === 0x0D || (code >= 0xD800 && code <= 0xDBFF);
+}
+
+/**
+ * @description Passes a comment through for the comment loop; one right after a CR or a high surrogate is vaulted, since removing it could join that character and the one after it.
  * @param {Object} state - Scanner state.
  * @param {number} open - Index of its "<!--".
  * @return {void}
@@ -441,7 +456,7 @@ function comment__(state, open)
 {
 	const end = commentEnd__(state, open);
 
-	if (state.block === null) state.parts.push(state.text[open - 1] === "\r" ? vault__(state.spans, state.text.slice(open, end)) : escapeMarks__(state, open, end));
+	if (state.block === null) state.parts.push(joinsNeighbour__(state.text.charCodeAt(open - 1)) ? vault__(state.spans, state.text.slice(open, end)) : escapeMarks__(state, open, end));
 
 	advance__(state, end);
 }
@@ -540,7 +555,7 @@ function scan__(text)
 		nextBang: cachedSearch__(index => text.indexOf("--!>", index)),
 		nextGt: cachedSearch__(index => text.indexOf(">", index)),
 		nextBackslash: cachedSearch__(index => text.indexOf("\\", index)),
-		nextEscape: cachedSearch__(index => searchFrom__(ESCAPES_SEARCH__, text, index)),
+		nextMarkup: cachedSearch__(index => text.indexOf("<", index)),
 		nextStyleEnd: cachedSearch__(index => searchFrom__(STYLE_END__, text, index))
 	};
 

@@ -887,6 +887,19 @@ describe("SVG diff review round 10", () =>
 	});
 });
 
+describe("SVG diff review round 12", () =>
+{
+	it("diff r12: a comment right after a high surrogate stays, since removing it would join the halves of a pair (red on main)", () =>
+	{
+		const witness = `${ROOT__}<text>a\uD83D<!-- c -->\uDE00b</text></svg>`;
+
+		expect(svg(witness)).toBe(witness);
+
+		// control: after a space the comment goes (the scanner exposes comments only after the start, ">", tab, LF or space)
+		expect(svg(`${ROOT__}<text>a <!-- c -->b</text></svg>`)).toBe(`${ROOT__}<text>a b</text></svg>`);
+	});
+});
+
 describe("SVG with a DOCTYPE: tag whitespace and comments only", () =>
 {
 	it("conservative mode edits only inside tags and comments (red on main)", () =>
