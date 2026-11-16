@@ -66,7 +66,9 @@ import { cpuMs__, difference__ } from "./TestSupport.js";
 // Expected payloads are computed with minify__(payload, "css"/"js") because the CSS and JS minifiers change in the
 // same work item; a few literal ones pin outputs both versions agree on.
 
-const BOUND_MS__ = 3000;
+// A bound for linear time, not a benchmark: the CI agent runs these inputs 4 to 6 times slower than a laptop (the same row took
+// 3082 ms there against 540 ms here), and a quadratic loop on 524288 repeats takes minutes, so 10 s still fails it.
+const BOUND_MS__ = 10000;
 const REPEAT__ = 524288;
 const TIMEOUT_MS__ = 120000;
 
