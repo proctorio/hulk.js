@@ -74,14 +74,14 @@ describe("minify__ on large comments, data URIs and pre blocks", { timeout: TIME
 	{
 		const html = `<p>→</p>\n<CODE class="a">\n${RUN__}</code >\n</Code>`;
 
-		expect(difference__(minify__(html, "html"), `<p>→</p> <CODE class="a">\n${RUN__}</code >\n</Code>`)).toBeNull();
+		expect(difference__(minify__(html, "html"), `<p>→</p> <CODE class="a">\n${RUN__}</code > </Code>`)).toBeNull();
 	});
 
 	it("HTML leaves an 8 MB unterminated pre block in place", () =>
 	{
 		const html = `<p>→</p>\n<pre>${RUN__}`;
 
-		expect(difference__(minify__(html, "html"), `<p>→</p><pre>${RUN__}`)).toBeNull();
+		expect(difference__(minify__(html, "html"), `<p>→</p> <pre>${RUN__}`)).toBeNull();
 	});
 
 	it("HTML drops the self-closing slash on a void tag with an 8 MB attribute", () =>

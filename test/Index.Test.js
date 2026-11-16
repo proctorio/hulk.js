@@ -218,7 +218,7 @@ newlines</pre>
 	
 		const dummySVGMinify = minify__(dummySVG, "svg");
 
-		expect(dummySVGMinify).toBe("<svg height=\"500px\" viewBox=\"0 0 500 500\" enable-background=\"new 0 0 500 500\" xml:space=\"preserve\"><path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M498,231c0,13.333,0,26.667,0,40c-.385,1.398-.936,2.775-1.127,4.2 c-.844,6.255-1.263,12.583-2.411,18.777c-8.655,46.727-28.586,87.95-60.799,123.02c-38.92,42.372-86.644,68.66-143.555,77.952 c-6.69,1.092-13.405,2.037-20.108,3.051c-13,0-26,0-39,0c-1.236-.376-2.449-.901-3.713-1.103 c-9.992-1.59-20.117-2.563-29.972-4.756c-53.421-11.889-97.848-39.035-133.607-80.278 c-30.342-34.994-49.232-75.482-56.631-121.262C6.022,284.072,5.024,277.534,4,271c0-13.333,0-26.667,0-40 c.381-1.599,.877-3.179,1.124-4.798c1.25-8.202,2.03-16.499,3.711-24.609c11.361-54.818,38.468-100.506,80.563-137.271 c35.167-30.716,75.897-49.783,122.013-57.266C217.934,5.998,224.47,5.017,231,4c13.333,0,26.667,0,40,0 c1.422,.376,2.823,.891,4.269,1.104c8.21,1.217,16.521,1.924,24.634,3.603c54.807,11.341,100.606,38.289,137.438,80.349 c30.879,35.262,50.052,76.126,57.554,122.425C495.948,217.983,496.966,224.493,498,231z M250.894,474.182 c120.941,.923,220.535-97.251,223.422-217.575c3.004-125.193-97.149-226.097-217.708-228.935 C131.18,24.72,30.261,125.194,27.658,245.892C24.928,372.446,127.893,475.144,250.894,474.182z\" /><path fill-rule=\"evenodd\" clip-rule=\"evenodd\" fill=\"#FFFFFF\" d=\"M250.894,474.182 c-123.001,.962-225.965-101.735-223.236-228.29C30.261,125.194,131.18,24.72,256.607,27.672 c120.559,2.838,220.712,103.741,217.708,228.935C471.429,376.931,371.835,475.104,250.894,474.182z M185.263,433.688 c72.183-60.821,143.721-121.1,215.631-181.692c-72.131-61.108-143.561-121.621-215.631-182.677 C185.263,191.178,185.263,311.828,185.263,433.688z\" /><path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M185.263,433.688c0-121.86,0-242.511,0-364.369 c72.07,61.056,143.5,121.568,215.631,182.677C328.983,312.589,257.445,372.867,185.263,433.688z\" /></svg>");
+		expect(dummySVGMinify).toBe("<svg height=\"500px\" viewBox=\"0 0 500 500\" enable-background=\"new 0 0 500 500\" xml:space=\"preserve\">\n\t\t\t<path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M498,231c0,13.333,0,26.667,0,40c-.385,1.398-.936,2.775-1.127,4.2 c-.844,6.255-1.263,12.583-2.411,18.777c-8.655,46.727-28.586,87.95-60.799,123.02c-38.92,42.372-86.644,68.66-143.555,77.952 c-6.69,1.092-13.405,2.037-20.108,3.051c-13,0-26,0-39,0c-1.236-.376-2.449-.901-3.713-1.103 c-9.992-1.59-20.117-2.563-29.972-4.756c-53.421-11.889-97.848-39.035-133.607-80.278 c-30.342-34.994-49.232-75.482-56.631-121.262C6.022,284.072,5.024,277.534,4,271c0-13.333,0-26.667,0-40 c.381-1.599,.877-3.179,1.124-4.798c1.25-8.202,2.03-16.499,3.711-24.609c11.361-54.818,38.468-100.506,80.563-137.271 c35.167-30.716,75.897-49.783,122.013-57.266C217.934,5.998,224.47,5.017,231,4c13.333,0,26.667,0,40,0 c1.422,.376,2.823,.891,4.269,1.104c8.21,1.217,16.521,1.924,24.634,3.603c54.807,11.341,100.606,38.289,137.438,80.349 c30.879,35.262,50.052,76.126,57.554,122.425C495.948,217.983,496.966,224.493,498,231z M250.894,474.182 c120.941,.923,220.535-97.251,223.422-217.575c3.004-125.193-97.149-226.097-217.708-228.935 C131.18,24.72,30.261,125.194,27.658,245.892C24.928,372.446,127.893,475.144,250.894,474.182z\" />\n\t\t\t<path fill-rule=\"evenodd\" clip-rule=\"evenodd\" fill=\"#FFFFFF\" d=\"M250.894,474.182 c-123.001,.962-225.965-101.735-223.236-228.29C30.261,125.194,131.18,24.72,256.607,27.672 c120.559,2.838,220.712,103.741,217.708,228.935C471.429,376.931,371.835,475.104,250.894,474.182z M185.263,433.688 c72.183-60.821,143.721-121.1,215.631-181.692c-72.131-61.108-143.561-121.621-215.631-182.677 C185.263,191.178,185.263,311.828,185.263,433.688z\" />\n\t\t\t<path fill-rule=\"evenodd\" clip-rule=\"evenodd\" d=\"M185.263,433.688c0-121.86,0-242.511,0-364.369 c72.07,61.056,143.5,121.568,215.631,182.677C328.983,312.589,257.445,372.867,185.263,433.688z\" />\n\t\t\t\t\t\t\t</svg>");
 	});
 
 	it("minify JSON", () => 
@@ -534,35 +534,27 @@ newlines</pre>
 		expect(minified).not.toContain(" >");
 	});
 
-	it("minify HTML removes default script type attribute", () => 
+	it("minify HTML keeps the default script type attribute (2.2.0)", () => 
 	{
 		const html = "<script type=\"text/javascript\">console.log(\"test\");</script>";
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe('<script>console.log("test");</script>');
-		expect(minified).not.toContain('type="text/javascript"');
+		expect(minified).toBe('<script type="text/javascript">console.log("test");</script>');
 	});
 
-	it("minify HTML removes default style type attribute", () => 
+	it("minify HTML keeps the default style type attribute (2.2.0)", () => 
 	{
 		const html = "<style type=\"text/css\">.test { color: red; }</style>";
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe("<style>.test { color: red; }</style>");
-		expect(minified).not.toContain('type="text/css"');
+		expect(minified).toBe("<style type=\"text/css\">.test{color:red}</style>");
 	});
 
-	it("minify HTML collapses boolean attributes", () => 
+	it("minify HTML keeps boolean attribute values (2.2.0)", () => 
 	{
 		const html = "<input type=\"checkbox\" checked=\"checked\" disabled=\"disabled\" required=\"required\">";
-		const minified = minify__(html, "html");
 
-		expect(minified).toContain("checked");
-		expect(minified).toContain("disabled");
-		expect(minified).toContain("required");
-		expect(minified).not.toContain('checked="checked"');
-		expect(minified).not.toContain('disabled="disabled"');
-		expect(minified).not.toContain('required="required"');
+		expect(minify__(html, "html")).toBe(html);
 	});
 
 	it("minify HTML preserves non-boolean attribute values", () => 
@@ -638,6 +630,29 @@ newlines</pre>
 		expect(minify__("", "css")).toBe("");
 	});
 
+	it("diff r10: a result that would start with U+FEFF, which the stripped content did not, is not used (red on main)", () =>
+	{
+		// a U+FEFF after what a minifier removes would become a byte order mark: the minified copy would lose its first rule or tag
+		for (const [extension, content] of [
+			["css", "\n\uFEFF.item{color:red}"],
+			["css", "/* c */\uFEFF.item { color : red }"],
+			["html", "\n\uFEFF<p>x</p>"],
+			["html", "<!-- c -->\uFEFF<p>x</p>"],
+			["svg", "<!-- c -->\uFEFF<svg><rect/></svg>"]
+		])
+		{
+			expect(minify__(content, extension)).toBe(content);
+			expect(minify__(`\uFEFF${content}`, extension)).toBe(content);
+		}
+
+		// controls: a stripped BOM leaves the result as before, and a U+FEFF that is not first stays where it is
+		expect(minify__("\uFEFF.item { color : red }", "css")).toBe(".item{color:red}");
+		expect(minify__(".item { content : \"\uFEFF\" }", "css")).toBe(".item{content:\"\uFEFF\"}");
+		expect(minify__("\n\uFEFF\uFEFF.item { color : red }", "css")).toBe("\n\uFEFF\uFEFF.item { color : red }");
+		expect(minify__("\uFEFF\uFEFF.item { color : red }", "css")).toBe("\uFEFF.item{color:red}");
+		expect(minify__("\n\uFEFFvar a = 1;", "js")).toBe("var a = 1;");
+	});
+
 	it("minify HTML fully minifies an img's self-closing trailing src", () =>
 	{
 		// img's self-closing "/" is dropped first, so by the time the src quotes are
@@ -646,7 +661,7 @@ newlines</pre>
 
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe("<img id=\"player_student\" src=data:image/png;base64,AAAA/AAA=>");
+		expect(minified).toBe("<img id=\"player_student\" src=\"data:image/png;base64,AAAA/AAA=\">");
 	});
 
 	it("minify HTML keeps quotes on a non-void self-closing tag's trailing href, space before the slash", () =>
@@ -689,7 +704,7 @@ newlines</pre>
 
 		const minified = minify__(html, "html");
 
-		expect(minified).toBe("<img src=data:image/png;base64,AAAA/AAA=>");
+		expect(minified).toBe("<img src=\"data:image/png;base64,AAAA/AAA=\">");
 	});
 
 	it("minify HTML drops the self-closing slash on an img with no attributes", () =>

@@ -7,7 +7,7 @@ const LINE_TERMINATOR__ = /[\n\r\u2028\u2029]/gu;
  * @param {number} from - First index to check.
  * @return {number} Index of the next line terminator, or content.length.
  */
-function _lineEnd__(content, from)
+function lineEnd__(content, from)
 {
 	LINE_TERMINATOR__.lastIndex = from;
 	const found = LINE_TERMINATOR__.exec(content);
@@ -16,11 +16,23 @@ function _lineEnd__(content, from)
 }
 
 /**
+ * @description Tells whether a comment at an index may be removed.
+ * @param {?Set<number>} commentStarts - Indexes where a comment starts, or null for every index.
+ * @param {number} index - Where the comment-like text starts.
+ * @return {boolean} True when it may be removed.
+ */
+function _removable__(commentStarts, index)
+{
+	return commentStarts === null || commentStarts.has(index);
+}
+
+/**
  * @description Removes line-leading JS comments.
  * @param {string} content - JS source.
+ * @param {?Set<number>} [commentStarts] - When given, only comments starting here are removed; others are kept and skipped.
  * @return {string} The source without its line-leading comments.
  */
-function stripJsComments__(content)
+function stripJsComments__(content, commentStarts = null)
 {
 	const pieces = [];
 	let copiedTo = 0;
@@ -45,19 +57,25 @@ function stripJsComments__(content)
 			}
 			else
 			{
-				pieces.push(content.slice(copiedTo, first));
-				copiedTo = close + 2;
-				resumeAt = copiedTo;
+				resumeAt = close + 2;
+				if (_removable__(commentStarts, first))
+				{
+					pieces.push(content.slice(copiedTo, first));
+					copiedTo = resumeAt;
+				}
 			}
 		}
 		else if (content.startsWith("//", first))
 		{
-			pieces.push(content.slice(copiedTo, lineStart));
-			copiedTo = _lineEnd__(content, first + 2);
-			resumeAt = copiedTo;
+			resumeAt = lineEnd__(content, first + 2);
+			if (_removable__(commentStarts, first))
+			{
+				pieces.push(content.slice(copiedTo, lineStart));
+				copiedTo = resumeAt;
+			}
 		}
 
-		lineStart = _lineEnd__(content, resumeAt) + 1;
+		lineStart = lineEnd__(content, resumeAt) + 1;
 	}
 
 	pieces.push(content.slice(copiedTo));
@@ -65,4 +83,4 @@ function stripJsComments__(content)
 	return pieces.join("");
 }
 
-export { stripJsComments__ };
+export { lineEnd__, stripJsComments__ };
