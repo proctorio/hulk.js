@@ -40,8 +40,9 @@ const RUN__ = 131072;
 // CPU-time bound of every scaling test, as in the markup and JS tests
 const CPU_MS__ = 3000;
 
-// CPU-time bound of the 8 MB rows: they take 16 to 126 ms here and 3156 ms once on a CI agent (build 203741), while
-// the old regex needs 19 s at 128K and grows with the square, so hours at 8 MB: a loose bound loses nothing
+// CPU-time bound of the 8 MB rows: 16 to 126 ms here, 208 to 429 ms here under the V8 coverage CI runs, and 3156 ms on a
+// CI agent (build 203741). The old regex throws at this size on Node 24.21.0 and needs 19 s at 128K, growing with the
+// square; a regression of a few seconds at 8 MB goes unseen here, the 128K rows catch it
 const BIG_CPU_MS__ = 20000;
 
 // generous per-test limit: v8 coverage slows the large inputs down several times over
