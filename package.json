@@ -59,9 +59,9 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@proctorio/eslint-config": "4.0.20",
-    "@vitest/coverage-v8": "5.1.0",
-    "eslint": "10.10.0",
-    "vitest": "5.1.0"
+    "@vitest/coverage-v8": "5.1.1",
+    "eslint": "10.15.0",
+    "vitest": "5.1.1"
   },
   "overrides": {
     "minimatch": "11.0.1"
